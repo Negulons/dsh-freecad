@@ -1,0 +1,32 @@
+dsh-freecad
+Copyright (c) 2026 蓝色大肥鱼 (dsh-freecad)
+Licensed under the MIT License — see LICENSE.
+
+This package does not bundle or redistribute FreeCAD. It drives a FreeCAD
+installation that is already present on the machine, by spawning its headless
+command line (`freecadcmd`) and by importing FreeCAD's own Python modules inside
+that process's environment.
+
+Third-party components that are used at run time but NOT distributed here
+--------------------------------------------------------------------------
+FreeCAD
+    https://www.freecad.org/
+    License: LGPL-2.1-or-later
+    Used as an external program; the plugin ships no FreeCAD source or binaries.
+
+Python packages shipped inside the FreeCAD Python environment
+    Pillow / PIL  — HPND license   (crop, resize and export of rendered images)
+    matplotlib    — PSF-based matplotlib license   (SVG / PDF / PNG output)
+    These are provided by the user's FreeCAD installation, not by this package.
+
+DeepSeek Harness
+    https://github.com/deepseek-ai/DeepSeek-Harness
+    The plugin declares `@deepseek-ai/*` packages as peer dependencies of the
+    host (`ctx.tools`, `ctx.slots`, `ctx.configForms`); no harness code is
+    vendored into this repository.
+
+Testing models
+--------------
+
+`examples/demo_bracket.step` and `examples/demo_bracket.FCStd` are synthetic
+parts created for this project. No customer or third-party CAD data is included.

@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# python
+__pycache__/
+*.py[cod]
+
+# local scratch / generated output
+out/
+_work/
+*.log
+
+# profile backups written by scripts/install.mjs
+*.bak
+*.bak-*
+
+# packaging artefacts (scripts/package.mjs produces these)
+*.zip
+*.7z
+
+# a portable FreeCAD unpacked next to the repo must never be committed
+FreeCAD-*/
+FreeCAD_*/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
