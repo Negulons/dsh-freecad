@@ -8,7 +8,7 @@
  * It does exactly what DSH needs and nothing else:
  *   1. copy this package into <profile>/plugins/dsh-freecad
  *   2. declare it in <profile>/package.json (file: dependency + bundle entry)
- *   3. add the cordis.patch.yml insert entry (creating the file if absent)
+ *   3. mount the entry in cordis.patch.yml as a top-level row (creating the file if absent)
  *   4. try `pnpm install`; when pnpm is unavailable, copy the package into
  *      <profile>/node_modules/dsh-freecad by hand
  *
@@ -118,6 +118,9 @@ if (changed) {
 }
 
 // --------------------------------------------------------- 3. cordis.patch.yml
+// The entry is declared as a top-level patch row (id + name), NOT inside an
+// `insert:` block: the Settings UI can only write config into a top-level row,
+// so an inserted entry would refuse every save with `settings/rejected`.
 let patch = fs.existsSync(patchFile) ? fs.readFileSync(patchFile, 'utf8') : ''
 if (/name:\s*['"]?dsh-freecad['"]?(\s|$)/m.test(patch)) {
   log('profile cordis.patch.yml already mounts dsh-freecad')
@@ -125,7 +128,7 @@ if (/name:\s*['"]?dsh-freecad['"]?(\s|$)/m.test(patch)) {
   if (patch) backup(patchFile)
   if (patch && !patch.endsWith('\n')) patch += '\n'
   patch += "\n# dsh-freecad: STEP/CAD inspection, editing and 2D drawing tools\n"
-    + "- insert:\n    - id: freecad\n      name: 'dsh-freecad'\n"
+    + "- id: freecad\n  name: dsh-freecad\n"
   fs.writeFileSync(patchFile, patch, 'utf8')
   log('profile cordis.patch.yml updated')
 }
@@ -201,9 +204,9 @@ for (const must of ['index.js', 'dsh/fc_worker.py']) {
     fail(`node_modules copy incomplete: ${must} missing`)
   }
 }
-const selfTest = path.join(modulesDir, 'index.js')
+const selfTest = path.join(installDir, 'index.js')
 const check = spawnSync(process.execPath, [selfTest, '--self-test'],
-  { encoding: 'utf8', cwd: modulesDir })
+  { encoding: 'utf8', cwd: installDir })
 const stdout = (check.stdout ?? '').trim()
 let info = null
 try {

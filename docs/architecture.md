@@ -172,6 +172,14 @@ host 半侧只认一个字段，声明为 **volatile**（保存即重新应用�
 4. 内置候选：`C:\Program Files\FreeCAD 1.1|1.0|FreeCAD\bin\freecadcmd.exe`
 
 配置从 `apply(ctx, config)` 拿到；volatile 字段是 schemastery 的 ref，读值用 `config.freecadPath.get()`。
+
+**profile patch 必须把插件写成顶层条目**（`- id: freecad` / `name: dsh-freecad`），不能放进
+`- insert:` 块。DSH 的设置编辑器只会给「顶层、且没有 `insert` 键」的行写 config；写进 insert 块
+的条目每次保存都会被拒（`settings/rejected: Configuration for "freecad" is overridden by ...`）。
+
+便携版 FreeCAD 还要一处约定：它把用户目录放在自己旁边，在受保护/只读目录下会报
+`Could not create directories`。宿主因此对「非 Program Files」的 `freecadcmd` 自动注入
+`FREECAD_USER_HOME` / `FREECAD_USER_DATA` / `TMP`（指向系统临时目录），安装版不动，用户配置不受影响。
 旧的非 volatile 写法仍然兼容，所以两种配置文件都能用。
 
 ## 10. 超时与中止

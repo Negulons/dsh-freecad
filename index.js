@@ -180,6 +180,37 @@ function parseFreeCADVersion(output) {
   return match ? match[1] : line.trim() || null
 }
 
+/**
+ * Extra environment for a portable (unzipped) FreeCAD.
+ *
+ * The portable build keeps its user data next to the executable, which fails
+ * with "Could not create directories. Access is denied." when that directory is
+ * read-only or inside a protected location. Redirecting HOME/DATA/TMP to the OS
+ * temp directory makes such builds work without touching their own folder.
+ * Installed builds (Program Files) are left untouched so user preferences stay.
+ * @param cmd - the resolved freecadcmd path.
+ * @returns environment additions, empty when none are needed.
+ */
+function portableEnv(cmd) {
+  if (process.env.FREECAD_USER_HOME) return {}
+  if (/^[a-z]:[\\/]program files/i.test(cmd)) return {}
+  try {
+    const root = path.join(os.tmpdir(), 'dsh-freecad', 'freecad-home')
+    const env = {
+      FREECAD_USER_HOME: path.join(root, 'home'),
+      FREECAD_USER_DATA: path.join(root, 'data'),
+      TMP: path.join(root, 'temp'),
+      TEMP: path.join(root, 'temp'),
+    }
+    for (const dir of [env.FREECAD_USER_HOME, env.FREECAD_USER_DATA, env.TMP]) {
+      fsSync.mkdirSync(dir, { recursive: true })
+    }
+    return env
+  } catch {
+    return {}
+  }
+}
+
 /** Run `freecadcmd --version` and return the parsed version (or null). */
 function probeFreeCADVersion(cmd, timeoutMs = 20_000) {
   return new Promise((resolve) => {
@@ -196,7 +227,11 @@ function probeFreeCADVersion(cmd, timeoutMs = 20_000) {
       finish(null)
     }, timeoutMs)
     try {
-      child = spawn(cmd, ['--version'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(cmd, ['--version'], {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, ...portableEnv(cmd) },
+      })
     } catch {
       finish(null)
       return
@@ -252,6 +287,7 @@ async function runWorker(payload, exec, signal) {
         windowsHide: true,
         env: {
           ...process.env,
+          ...portableEnv(cmd),
           FREECAD_PLUGIN_REQUEST: reqPath,
           FREECAD_PLUGIN_RESULT: resPath,
         },

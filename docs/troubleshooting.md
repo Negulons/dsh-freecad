@@ -22,7 +22,7 @@ DSH 插件 = Node 包 + bundle 声明：
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } } }
 ```
 
-`cordis.patch.yml`（包内）
+`cordis.patch.yml`（包内，bundle 层）
 
 ```yaml
 - insert:
@@ -36,8 +36,19 @@ profile 侧需要三件事（缺一不可）：
 2. profile `package.json`：
    - `dependencies["dsh-freecad"] = "file:./plugins/dsh-freecad"`
    - `dsh.profile.bundles` 数组包含 `"dsh-freecad"`
-3. profile `cordis.patch.yml` 末尾的 `insert` 条目（同上）；
+3. profile `cordis.patch.yml` 顶层的覆盖行（**不要写成 `- insert:` 块**）：
+
+```yaml
+- id: freecad
+  name: dsh-freecad
+```
+
 4. 在 profile 目录执行一次 `pnpm install`，生成 `node_modules/dsh-freecad`。
+
+> **为什么第 3 步不能用 `- insert:`**：DSH 的设置编辑器只会往「顶层、且没有 `insert` 键」的行里写
+> `config`。写进 insert 块的条目，每次在「设置 → FreeCAD」点保存都会被拒：
+> `settings/rejected: Configuration for "freecad" is overridden by a home patch or command-line overlay`。
+> 顶层行按 `id` 覆盖 bundle 层那一条，所以两处都写 `id: freecad` 不会重复注册。
 
 > **最容易踩的坑**：只把目录复制进 `node_modules/dsh-freecad` 而不写依赖清单。DSH 启动时会整理依赖，把“不在依赖树里”的包移走（会出现在 `node_modules/.ignored/` 下），表现为“重启后插件消失”。必须走 `file:` 依赖 + pnpm install。
 
@@ -128,6 +139,9 @@ node scripts\install.mjs
 | 工具调用被 DSH 拒绝，提示非法 JSON 数值 | 结果里出现 `-0.0`/`NaN` | 不应再出现；若复现，检查 `_json_safe()` 是否被绕过 |
 | 安装脚本报 `profile package.json not found` | `DSH_PROFILE` 指错目录 | 指向真实的 profile 根目录 |
 | 安装脚本 pnpm 退出非 0 | 运行时缺 pnpm 或依赖冲突 | 手动在 profile 执行 `pnpm install`，看完整报错 |
+| 设置页点保存提示「没有保存成功」 | profile patch 把条目写进了 `- insert:` 块，落在只读层 | 改成顶层行 `- id: freecad` / `name: dsh-freecad`，保存即生效，无需重启 |
+| 便携版报 `Could not create directories. Failed with: Access is denied.` | 便携版把用户目录放在自己旁边，那个目录不可写 | 0.2.0 起宿主会自动把 `FREECAD_USER_HOME`/`FREECAD_USER_DATA`/`TMP` 指向系统临时目录；也可自己设这三个环境变量 |
+| `freecad_status` 显示「printed no FreeCAD version」 | 便携版缺上述环境变量，`--version` 直接失败 | 重启 DSH（0.2.0 的自动注入在启动时生效），或手动设环境变量 |
 
 ## 8. 部署核对清单（每次发布前）
 

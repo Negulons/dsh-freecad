@@ -18,8 +18,7 @@
   },
   "scripts": {
     "test": "node index.js --self-test",
-    "package": "node scripts/package.mjs",
-    "install": "node scripts/install.mjs"
+    "package": "node scripts/package.mjs"
   },
   "author": "蓝色大肥鱼",
   "files": [

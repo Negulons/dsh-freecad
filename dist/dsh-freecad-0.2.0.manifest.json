@@ -1,7 +1,7 @@
 {
   "name": "dsh-freecad",
   "version": "0.2.0",
-  "builtAt": "2026-10-26T13:55:59.998Z",
+  "builtAt": "2026-10-26T14:41:07.740Z",
   "files": [
     {
       "path": "CHANGELOG.md",
@@ -30,13 +30,13 @@
     },
     {
       "path": "README.en.md",
-      "bytes": 7717,
-      "sha256": "f766e5dcf2e440ea735afd5137401f3aedf55e2cc95492f449ce22d789058647"
+      "bytes": 7973,
+      "sha256": "d4b53b0db8fed68ba7ebcc4c61a73e3bde4aed4d675ad4cdc66b7afe46034b5a"
     },
     {
       "path": "README.md",
-      "bytes": 7410,
-      "sha256": "0f23ff3c12025633859d09a6ff2287a9360d4773acb41293c16c7f8b01d0ae0e"
+      "bytes": 7651,
+      "sha256": "e795da2d10d639331cfa8fa82515816d24bd4a29696cbfbab3612ea899fcb4d0"
     },
     {
       "path": "SECURITY.md",
@@ -50,8 +50,8 @@
     },
     {
       "path": "docs\\architecture.md",
-      "bytes": 9903,
-      "sha256": "f20661e1431d20359b5b4f3356f73ea1827502a5c5f550e708fd9399775b116b"
+      "bytes": 10793,
+      "sha256": "65ee01a7cd77ddd3688ddc9335d172cbd50b52b348be4a2a1f47395245e5dae0"
     },
     {
       "path": "docs\\development.md",
@@ -60,13 +60,18 @@
     },
     {
       "path": "docs\\drawing-engine.md",
-      "bytes": 8689,
-      "sha256": "ef59bdd913bb094713935b10fe619e6a1924a4709f3f8faca3d0c1b1abd752f5"
+      "bytes": 8498,
+      "sha256": "344df691e3e0f4718727f9818a4cef5ecfb0ca9fcd5cff1ddbb3045af709d970"
     },
     {
       "path": "docs\\images\\demo-bracket-drawing.png",
       "bytes": 209189,
       "sha256": "a0e5cd93afe9e1b6a9bb58eb0a76aa6d638d1f9f176d5fd1e298b0edc93d69ed"
+    },
+    {
+      "path": "docs\\images\\settings-freecad.png",
+      "bytes": 83100,
+      "sha256": "8aca1ecd3fe4f5669d8b04a614a9d6e777fc2eaef587395c48b7402378e64514"
     },
     {
       "path": "docs\\limitations.md",
@@ -80,8 +85,8 @@
     },
     {
       "path": "docs\\troubleshooting.md",
-      "bytes": 12921,
-      "sha256": "85012b8a024ddbebdc4adbce6e088ca7476513e1347815cbb33b7754169032c6"
+      "bytes": 14162,
+      "sha256": "746335ff7baf5c0dc7eeb31de5ac3baab7d400bee41d36669a49c5f1fd06174b"
     },
     {
       "path": "dsh\\fc_common.py",
@@ -95,8 +100,8 @@
     },
     {
       "path": "dsh\\fc_worker.py",
-      "bytes": 16553,
-      "sha256": "c7743c0b970fd754b99d5b83f07dde01f26799362864a01353847797f92480ee"
+      "bytes": 16142,
+      "sha256": "4348c71811c4d21ac0190319faa9718a1284805de8edea1f62276db41e5db2c4"
     },
     {
       "path": "examples\\demo_bracket.FCStd",
@@ -110,8 +115,8 @@
     },
     {
       "path": "index.js",
-      "bytes": 28935,
-      "sha256": "63ec62b08509dda539941e4c17543445e9b18a1985d7902881e7a44b58a61499"
+      "bytes": 29523,
+      "sha256": "c1955b6f98183fc27b5f3ec6e0cacf24a229cf8cae3a9ec2c2c2c878f42b2a53"
     },
     {
       "path": "lib\\client.js",
@@ -120,18 +125,18 @@
     },
     {
       "path": "package.json",
-      "bytes": 1165,
-      "sha256": "01538813ae4b4ab9ba1743db3cab4701f7e8358d0b83b8cc118095f9fbc5403a"
+      "bytes": 1178,
+      "sha256": "3d2fe227d38a83cfeaff67348202f0bc729cde24e33f9285ab6cc57c72101c10"
     },
     {
       "path": "scripts/install.mjs",
-      "bytes": 9623,
-      "sha256": "62355aaba0890a364cc04ae82c024d4288a44297f772bd82e7ac443b3b5963dc"
+      "bytes": 9609,
+      "sha256": "139c1b34eeb15c1d9fb24393ec09d166425ac842336dd11b2c06a0ff87e3bf79"
     },
     {
       "path": "scripts\\install.mjs",
-      "bytes": 9623,
-      "sha256": "62355aaba0890a364cc04ae82c024d4288a44297f772bd82e7ac443b3b5963dc"
+      "bytes": 9609,
+      "sha256": "139c1b34eeb15c1d9fb24393ec09d166425ac842336dd11b2c06a0ff87e3bf79"
     },
     {
       "path": "scripts\\package.mjs",
@@ -141,7 +146,7 @@
   ],
   "zip": {
     "path": "D:\\DSH\\DSH-CAD\\pkg\\dsh-freecad\\dist\\dsh-freecad-0.2.0.zip",
-    "bytes": 283911,
-    "sha256": "711386b9063575c4d3e1a388c8b07517414465678dce50662e1a2744e4c70bc9"
+    "bytes": 367236,
+    "sha256": "a69d88d700f35acda6ea6b3de9e1aa5064b0d1db56a6af0f62db4443df4d381d"
   }
 }

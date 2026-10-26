@@ -86,8 +86,11 @@ FreeCADCmd: C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe
 
 ## Pointing at your FreeCAD
 
-Open **DSH → Settings → FreeCAD** and paste the full path to `freecadcmd`, for example a portable
-build:
+Open **DSH → Settings → FreeCAD** and paste the full path to `freecadcmd`:
+
+![Settings → FreeCAD](docs/images/settings-freecad.png)
+
+A portable build, for example:
 
 ```
 D:\Tools\FreeCAD_1.1.4-Windows-x86_64-py311\bin\freecadcmd.exe
@@ -125,7 +128,9 @@ Those are three tool calls; output lands next to the input (`<name>_drawing/`, `
 ## Known issues
 
 **A portable FreeCAD fails with `Could not create directories. Failed with: Access is denied.`**
-The portable build writes user data next to itself. Give the worker writable locations:
+Since 0.2.0 this is handled for you: when `freecadcmd` is not under `Program Files`, the host points
+`FREECAD_USER_HOME` / `FREECAD_USER_DATA` / `TMP` at the system temp directory. Set these yourself
+when you want to keep FreeCAD preferences in a known place (your values win):
 
 ```
 FREECAD_USER_HOME=D:\Tools\FreeCAD\home
