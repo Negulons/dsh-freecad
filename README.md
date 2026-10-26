@@ -43,7 +43,9 @@ node scripts/install.mjs                       # 默认装进 ~/.dsh/profiles/de
 node scripts/install.mjs --profile "C:\Users\me\.dsh\profiles\other"
 ```
 
-脚本会：把包复制到 `<profile>/plugins/dsh-freecad`；在 `package.json` 里写入 `file:` 依赖并加进 `dsh.profile.bundles`；在 `cordis.patch.yml` 追加 `insert` 条目；执行 `pnpm install`（没有 pnpm 时退化为直接复制到 `node_modules`）。**被改动的文件都会先备份为 `*.bak-<时间戳>`。**
+脚本会：把包复制到 `<profile>/plugins/dsh-freecad`；在 `package.json` 里写入 `file:` 依赖并加进 `dsh.profile.bundles`；在 `cordis.patch.yml` 追加一条**顶层**的 `id: freecad` 行；执行 `pnpm install`（没有 pnpm 时退化为直接复制到 `node_modules`）。**被改动的文件都会先备份为 `*.bak-<时间戳>`。**
+
+> 那条配置必须写在**顶层**，不能包进 `- insert:` 块。DSH 的设置编辑器只会给「顶层、且没有 `insert` 键」的条目写 `config`；写进 insert 块的条目在设置页点保存会一直报「没有保存成功」（服务端返回 `settings/rejected`）。安装脚本已按顶层写。
 
 ### 方式 B：作为本地路径依赖
 

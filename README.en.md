@@ -52,9 +52,13 @@ node scripts/install.mjs --profile "C:\Users\me\.dsh\profiles\other"
 ```
 
 The installer copies the package to `<profile>/plugins/dsh-freecad`, records a `file:` dependency in
-`package.json`, appends the package to `dsh.profile.bundles`, adds an `insert` entry to
+`package.json`, appends the package to `dsh.profile.bundles`, adds a **top-level** `id: freecad` row to
 `cordis.patch.yml`, and runs `pnpm install` (falling back to a plain copy when pnpm is missing).
 **Every modified file is backed up as `*.bak-<timestamp>` first.**
+
+> That row must stay top-level — do not wrap it in an `- insert:` block. The DSH settings editor only
+> writes `config` into top-level entries that have no `insert` key; an inserted entry rejects every save
+> from Settings with `settings/rejected`. The installer already writes it top-level.
 
 ### B. As a local path dependency
 
