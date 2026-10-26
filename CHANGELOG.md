@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.2.1 — docs patch
+
+### Fixed
+
+- The two README screenshots used repo-relative paths, which npm renders as
+  `https://www.npmjs.com/package/...` and therefore showed as broken images on
+  the package page. They now use absolute `raw.githubusercontent.com` URLs, so
+  the same Markdown works on GitHub and on npm.
+
 ## 0.2.0 — first public release
 
 ### Added
