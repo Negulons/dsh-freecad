@@ -1,5 +1,9 @@
 # dsh-freecad
 
+[![CI](https://github.com/Negulons/dsh-freecad/actions/workflows/ci.yml/badge.svg)](https://github.com/Negulons/dsh-freecad/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-freecad.svg)](https://www.npmjs.com/package/dsh-freecad)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 English · [中文](README.md)
 
 Let an AI agent read, edit and draw your local CAD files: **inspect STEP/STP, edit solids

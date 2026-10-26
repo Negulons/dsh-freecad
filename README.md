@@ -1,5 +1,9 @@
 # dsh-freecad
 
+[![CI](https://github.com/Negulons/dsh-freecad/actions/workflows/ci.yml/badge.svg)](https://github.com/Negulons/dsh-freecad/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-freecad.svg)](https://www.npmjs.com/package/dsh-freecad)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [English](README.en.md) · 中文
 
 让 AI 读写你本机的 CAD 文件：**读取 STEP/STP、按几何方式编辑立体模型、生成第一角法二维图**。

@@ -75,7 +75,44 @@ node test\call_tool.mjs freecad_step_to_drawing args.json
 4. **版面闸门**：凡是走 Scene 的排版，出图前必须 `layout_check.check_scene()` 全绿。
 5. **安装回归**：在临时 profile 上跑 `install.mjs` 两次，确认幂等、备份文件生成、依赖正确。
 
-## 7. 验收环境记录（历史）
+## 7. 发布到 npm（实操记录，2026-10）
+
+账号 `negulons` 开了 2FA，所以**普通登录态发不出去**：`PUT /dsh-freecad` 会回
+`403 Two-factor authentication or granular access token with bypass 2fa enabled is required`。
+`--otp=`、`NPM_CONFIG_OTP` 这两条在 pnpm 下都不生效，别浪费时间。
+
+正确做法：
+
+1. 在 <https://www.npmjs.com/settings/~/tokens> 建 **Granular Access Token**：
+   `Packages and scopes = Read and write`、勾 **Bypass 2FA**、有效期 7 天。
+   （npm 已公告 2027-01 取消 bypass-2FA 直发，长期应改用 CI + trusted publishing。）
+2. **token 要写进 pnpm 自己的凭据文件**，写 `~/.npmrc` 会被忽略：
+
+   ```
+   C:\Users\<user>\AppData\Local\pnpm\config\auth.ini
+   //registry.npmjs.org/:_authToken=npm_xxx
+   ```
+
+   这是本次踩的最大坑：`pnpm whoami` 一直是 `negulons`（读的是旧网页登录 token），
+   而真正的发布请求带着旧 token，于是一直 403。
+3. `pnpm publish --access public --no-git-checks`。
+4. **别凭 CLI 输出下结论。** registry 的 packument 有几分钟 CDN 缓存，刚发完
+   `GET /<pkg>/<version>` 可能还是 404、`dist-tags.latest` 还是旧值。用轮询确认：
+
+   ```bash
+   curl -s https://registry.npmjs.org/-/package/dsh-freecad/dist-tags
+   curl -s -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/dsh-freecad/0.2.1
+   ```
+
+   本次 0.2.1 从 publish 到 `latest` 生效约 **5 分钟**。在这之前重发会得到
+   `403 You cannot publish over the previously published versions`——那句 403 其实说明
+   **已经发上去了**。
+5. 首次发布会自动生成一个 `0.0.0-stage` 占位版本（"Temporary package placeholder for
+   staged publishing"），所以 npm 页面会显示「N Versions」，属正常现象。
+6. README 里的图片必须用**绝对 URL**（`raw.githubusercontent.com`）。用相对路径时 npm
+   会解析成 `https://www.npmjs.com/package/docs/images/...`，全部裂图。
+
+## 8. 验收环境记录（历史）
 
 | 项 | 值 |
 |---|---|

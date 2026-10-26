@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Syntax only: the plugin talks to FreeCAD at runtime and is not installed here.
+      - name: Syntax check
+        run: |
+          node --check index.js
+          node --check lib/client.js
+          node --check scripts/install.mjs
+          node --check scripts/package.mjs
+
+      - name: Manifests
+        run: |
+          node -e "JSON.parse(require('node:fs').readFileSync('package.json','utf8'))"
+          node -e "const s=require('node:fs').readFileSync('cordis.patch.yml','utf8'); if(!/id:\s*freecad/.test(s)) throw new Error('cordis.patch.yml lost its freecad row')"
+
+      - name: Self test (reports missing FreeCAD, must not crash)
+        run: node index.js --self-test > /dev/null
+
+      - name: Package archive
+        run: node scripts/package.mjs

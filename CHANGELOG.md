@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.2.2 — package metadata
+
+### Fixed
+
+- `package.json` now carries `repository`, `homepage`, `bugs` and `funding`, so
+  the npm package page links back to this repository instead of looking like a
+  detached tarball.
+
 ## 0.2.1 — docs patch
 
 ### Fixed
