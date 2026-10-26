@@ -57,12 +57,15 @@ node scripts/install.mjs --profile "C:\Users\me\.dsh\profiles\other"
 }
 ```
 
-### 方式 C：npm（0.2.0 起提供）
+### 方式 C：npm（已发布）
+
+<https://www.npmjs.com/package/dsh-freecad>
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add dsh-freecad            # 或 @scope/dsh-freecad
-# 然后把 "dsh-freecad" 加进 package.json 的 dsh.profile.bundles
+pnpm add dsh-freecad
+# 然后把 "dsh-freecad" 加进 package.json 的 dsh.profile.bundles，
+# 并在 cordis.patch.yml 里加一条顶层的 id: freecad 行（同方式 B 第 2 步）
 ```
 
 ### 装完之后

@@ -70,12 +70,15 @@ The installer copies the package to `<profile>/plugins/dsh-freecad`, records a `
 }
 ```
 
-### C. From npm (once published)
+### C. From npm (published)
+
+<https://www.npmjs.com/package/dsh-freecad>
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add dsh-freecad            # or @scope/dsh-freecad
+pnpm add dsh-freecad
 # then add "dsh-freecad" to dsh.profile.bundles in package.json
+# and add one top-level `id: freecad` row in cordis.patch.yml (step 2 of option B)
 ```
 
 ### After installing
