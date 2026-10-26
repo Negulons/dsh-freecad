@@ -9,7 +9,7 @@
 让 AI 读写你本机的 CAD 文件：**读取 STEP/STP、按几何方式编辑立体模型、生成第一角法二维图**。
 几何计算全部在 FreeCAD 自己的进程里完成，插件只负责工具注册、参数校验和文件传递——不需要在 DSH 里装 Python，也不上传任何模型。
 
-![示例图纸](https://raw.githubusercontent.com/Negulons/dsh-freecad/main/docs/images/demo-bracket-drawing.png)
+![示例图纸](https://cdn.jsdelivr.net/gh/Negulons/dsh-freecad@main/docs/images/demo-bracket-drawing.png)
 
 *`examples/demo_bracket.step` 经 `freecad_step_to_drawing` 生成的 A3 图纸（SVG/DXF/PDF/PNG 四格式同时输出）。*
 
@@ -86,7 +86,7 @@ FreeCADCmd: C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe
 
 打开 **DSH → 设置 → FreeCAD**，填入 `freecadcmd` 的完整路径（例如便携版）：
 
-![设置 → FreeCAD](https://raw.githubusercontent.com/Negulons/dsh-freecad/main/docs/images/settings-freecad.png)
+![设置 → FreeCAD](https://cdn.jsdelivr.net/gh/Negulons/dsh-freecad@main/docs/images/settings-freecad.png)
 
 ```
 D:\Tools\FreeCAD_1.1.4-Windows-x86_64-py311\bin\freecadcmd.exe

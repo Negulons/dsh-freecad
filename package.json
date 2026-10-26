@@ -1,6 +1,6 @@
 {
   "name": "dsh-freecad",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "DSH plugin for FreeCAD: inspect and edit STEP/STP solid models, then generate first-angle 2D machining drawings (SVG/DXF/PDF/PNG) with automatic HLR, dimensions and a hole table.",
   "type": "module",
   "repository": {

@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.2.3 — README images behind a CDN
+
+### Fixed
+
+- README screenshots moved from `raw.githubusercontent.com` to `cdn.jsdelivr.net`
+  (`gh/Negulons/dsh-freecad@main/...`). `raw.githubusercontent.com` is commonly
+  unreachable from mainland China, so the images showed as broken for exactly the
+  audience this plugin is written for.
+
 ## 0.2.2 — package metadata
 
 ### Fixed

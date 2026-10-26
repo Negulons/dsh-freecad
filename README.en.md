@@ -10,7 +10,7 @@ Let an AI agent read, edit and draw your local CAD files: **inspect STEP/STP, ed
 geometrically, and produce a first-angle 2D drawing**. All geometry runs inside FreeCAD's own
 process — nothing is uploaded, and DSH does not need a Python toolchain of its own.
 
-![Example drawing](https://raw.githubusercontent.com/Negulons/dsh-freecad/main/docs/images/demo-bracket-drawing.png)
+![Example drawing](https://cdn.jsdelivr.net/gh/Negulons/dsh-freecad@main/docs/images/demo-bracket-drawing.png)
 
 *`examples/demo_bracket.step` rendered by `freecad_step_to_drawing` as an A3 sheet (SVG, DXF, PDF
 and PNG in one call).*
@@ -99,7 +99,7 @@ FreeCADCmd: C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe
 
 Open **DSH → Settings → FreeCAD** and paste the full path to `freecadcmd`:
 
-![Settings → FreeCAD](https://raw.githubusercontent.com/Negulons/dsh-freecad/main/docs/images/settings-freecad.png)
+![Settings → FreeCAD](https://cdn.jsdelivr.net/gh/Negulons/dsh-freecad@main/docs/images/settings-freecad.png)
 
 A portable build, for example:
 
