@@ -89,7 +89,7 @@ node scripts\install.mjs
 
 ## 5. 配置 FreeCADCmd 路径
 
-优先级：`config.freecadCmd`（profile patch 条目） > `FREECAD_CMD` 环境变量 > 内置候选：
+优先级：**设置 → FreeCAD 里填的路径** > `config.freecadPath`（profile patch 条目，旧写法 `config.freecadCmd`） > `FREECAD_CMD` 环境变量 > 内置候选：
 `C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe`、`...\FreeCAD 1.0\...`、`...\FreeCAD\...`
 
 ```yaml
@@ -228,7 +228,7 @@ pnpm install
 解析优先级从高到低：
 
 1. 设置 → FreeCAD 里填的路径（`freecadPath`）；
-2. profile `cordis.patch.yml` 里 `freecad` 条目的 `config.freecadCmd`；
+2. profile `cordis.patch.yml` 里 `freecad` 条目的 `config.freecadPath`（旧写法 `config.freecadCmd` 仍兼容）；
 3. 环境变量 `FREECAD_CMD`；
 4. 常见安装位置自动探测，最后查 PATH。
 

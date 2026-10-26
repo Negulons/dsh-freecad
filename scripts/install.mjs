@@ -229,8 +229,8 @@ log(`self-test: freecadCmd exists = ${info.exists}`)
 log(`self-test: worker = ${worker}`)
 log(`self-test: tools = ${info.tools.map((t) => t.name).join(', ')}`)
 if (!info.exists) {
-  log('WARNING: FreeCADCmd was not found.  Set FREECAD_CMD, or add config.freecadCmd '
-    + 'to the freecad entry in cordis.patch.yml, then restart DSH.')
+  log('WARNING: FreeCADCmd was not found.  After restarting DSH, set the path in '
+    + 'DSH -> Settings -> FreeCAD (or use the FREECAD_CMD environment variable).')
 }
 
 console.log('')

@@ -66,7 +66,7 @@ The installer copies the package to `<profile>/plugins/dsh-freecad`, records a `
 }
 ```
 
-### C. From npm (available from 0.2.0)
+### C. From npm (once published)
 
 ```bash
 cd ~/.dsh/profiles/desktop

@@ -32,7 +32,12 @@
     "docs/",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "README.en.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
   ],
   "keywords": [
     "dsh",

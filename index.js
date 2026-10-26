@@ -15,7 +15,7 @@
 //   1. the value saved in DSH → Settings → FreeCAD (`freecadPath`, a volatile
 //      config field rendered by the browser half in lib/client.js) — either
 //      freecadcmd.exe itself or a FreeCAD install directory;
-//   2. `config.freecadCmd` from cordis.patch.yml;
+//   2. `config.freecadPath` in cordis.patch.yml (legacy spelling: `config.freecadCmd`);
 //   3. the FREECAD_CMD environment variable;
 //   4. the usual Windows install locations, then `freecadcmd` on PATH.
 import { spawn } from 'node:child_process'
@@ -234,8 +234,8 @@ async function runWorker(payload, exec, signal) {
   const cmd = exec.cmd
   if (!isExecutableFile(cmd)) {
     throw new Error(
-      `FreeCADCmd not found at ${cmd}. Install FreeCAD, or set the FreeCAD path in ` +
-      'DSH → 插件 → dsh-freecad (the FREECAD_CMD environment variable and config.freecadCmd work too).',
+      `FreeCADCmd not found at ${cmd}. Install FreeCAD, then set the path in ` +
+      'DSH → Settings → FreeCAD (FREECAD_CMD and config.freecadPath work too).',
     )
   }
   if (!fsSync.existsSync(WORKER)) {
