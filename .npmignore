@@ -1,0 +1,12 @@
+# npm tarball exclusions (the "files" whitelist alone is not enough)
+__pycache__/
+*.py[cod]
+*.tgz
+dist/
+out/
+_work/
+*.log
+*.bak
+*.bak-*
+FreeCAD-*/
+FreeCAD_*/
