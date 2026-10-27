@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.4.1 — 改走 OIDC 发布
+
+### Changed
+
+- 新增 `.github/workflows/publish.yml`：npm 发布从"granular token + bypass 2FA"改为
+  **Trusted Publishing（GitHub OIDC）**。不再需要任何长期密钥，发布时自动带 provenance，
+  也不再受 2027-01 起 npm 取消 bypass-2FA 直发的影响。
+- `docs/development.md` 第 7 节重写：OIDC 为首选路径，token 降为兜底。
+
+无代码行为变化。
+
 ## 0.4.0 — 孔识别的三类盲区
 
 ### Fixed

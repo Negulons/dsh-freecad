@@ -1,0 +1,53 @@
+name: publish
+
+# Publishes to npm via **Trusted Publishing** (OIDC) — no NPM_TOKEN anywhere.
+# Requirements, all one-time:
+#   1. npmjs.com → package dsh-freecad → Settings → Trusted publishing
+#        GitHub repo: Negulons/dsh-freecad
+#        Workflow file: publish.yml
+#   2. this file on the default branch (npm matches on the file name)
+#
+# Why OIDC instead of a token: the npm account has 2FA on, so token publishing needs
+# a "granular token with bypass 2FA", and npm is deprecating direct publishing with
+# those (January 2027). OIDC needs no secret, expires per run, and adds a provenance
+# attestation for free.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # the OIDC identity token npm exchanges for a short-lived credential
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Negulons/dsh-freecad'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm >= 11.5; the runner ships an older one.
+      - name: Upgrade npm
+        run: npm install -g npm@latest && npm --version
+
+      - name: Check the tag matches package.json
+        if: github.event_name == 'release'
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          tag="${{ github.event.release.tag_name }}"
+          echo "package.json=$pkg tag=$tag"
+          test "v$pkg" = "$tag" || { echo "::error::tag $tag does not match package.json $pkg"; exit 1; }
+
+      - name: Publish
+        run: npm publish --access public

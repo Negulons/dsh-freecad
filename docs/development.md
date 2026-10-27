@@ -82,17 +82,36 @@ node test\call_tool.mjs freecad_step_to_drawing args.json
    新增识别规则时先在这里加用例。注意：脚本结尾用 `sys.exit`，所以所有输出都 `flush=True`——
    否则 FreeCAD 直接吞掉缓冲区，看起来像"什么都没执行"。
 
-## 7. 发布到 npm（实操记录，2026-10）
+## 7. 发布到 npm
 
-账号 `negulons` 开了 2FA，所以**普通登录态发不出去**：`PUT /dsh-freecad` 会回
+### 7.1 首选：GitHub Actions + Trusted Publishing（OIDC，无 token）
+
+`.github/workflows/publish.yml` 发布时向 npm 出示 GitHub 的 OIDC 身份，npm 换一张
+**单次有效**的凭据，同时自动生成 provenance（签名证明"这个版本由这个仓库的这个 commit 跑出来"）。
+没有任何长期密钥可泄露，也不再受 2FA / token 过期 / bypass-2FA 退场的影响。
+
+一次性配置（npm 网页，需账号密码进入 sudo 模式）：
+
+1. `https://www.npmjs.com/package/dsh-freecad/access`（包的 Settings 页，会要求重输密码）；
+2. 找到 **Trusted publishing** → Add GitHub Actions：
+   - Organization or user：`Negulons`
+   - Repository：`dsh-freecad`
+   - Workflow file name：`publish.yml`
+   - Environment：留空
+3. 之后：**发 GitHub Release** 即自动发布（tag 必须与 `package.json` 的版本一致，workflow 里有校验）；
+   也可以手动 `Actions → publish → Run workflow`。
+
+注意：`publish.yml` 必须在默认分支上，文件名和注册时填的完全一致。
+
+### 7.2 兜底：granular token（**已弃用路径**）
+
+账号 `negulons` 开了 2FA，所以普通登录态发不出去：`PUT /dsh-freecad` 会回
 `403 Two-factor authentication or granular access token with bypass 2fa enabled is required`。
 `--otp=`、`NPM_CONFIG_OTP` 这两条在 pnpm 下都不生效，别浪费时间。
-
-正确做法：
+npm 已公告 2027-01 起不再允许 bypass-2FA 直发，所以这条路只在 OIDC 不可用时用。
 
 1. 在 <https://www.npmjs.com/settings/~/tokens> 建 **Granular Access Token**：
    `Packages and scopes = Read and write`、勾 **Bypass 2FA**、有效期 7 天。
-   （npm 已公告 2027-01 取消 bypass-2FA 直发，长期应改用 CI + trusted publishing。）
 2. **token 要写进 pnpm 自己的凭据文件**，写 `~/.npmrc` 会被忽略：
 
    ```
@@ -103,7 +122,10 @@ node test\call_tool.mjs freecad_step_to_drawing args.json
    这是本次踩的最大坑：`pnpm whoami` 一直是 `negulons`（读的是旧网页登录 token），
    而真正的发布请求带着旧 token，于是一直 403。
 3. `pnpm publish --access public --no-git-checks`。
-4. **别凭 CLI 输出下结论。** registry 的 packument 有几分钟 CDN 缓存，刚发完
+
+### 7.3 两种方式都要注意
+
+1. **别凭 CLI 输出下结论。** registry 的 packument 有几分钟 CDN 缓存，刚发完
    `GET /<pkg>/<version>` 可能还是 404、`dist-tags.latest` 还是旧值。用轮询确认：
 
    ```bash
@@ -114,10 +136,11 @@ node test\call_tool.mjs freecad_step_to_drawing args.json
    本次 0.2.1 从 publish 到 `latest` 生效约 **5 分钟**。在这之前重发会得到
    `403 You cannot publish over the previously published versions`——那句 403 其实说明
    **已经发上去了**。
-5. 首次发布会自动生成一个 `0.0.0-stage` 占位版本（"Temporary package placeholder for
+2. 首次发布会自动生成一个 `0.0.0-stage` 占位版本（"Temporary package placeholder for
    staged publishing"），所以 npm 页面会显示「N Versions」，属正常现象。
-6. README 里的图片必须用**绝对 URL**（`raw.githubusercontent.com`）。用相对路径时 npm
-   会解析成 `https://www.npmjs.com/package/docs/images/...`，全部裂图。
+3. README 里的图片必须用**绝对 URL**，且 `raw.githubusercontent.com` 在国内不可达，用
+   jsDelivr：`https://cdn.jsdelivr.net/gh/Negulons/dsh-freecad@main/docs/images/...`。
+   用相对路径时 npm 会解析成 `https://www.npmjs.com/package/docs/images/...`，全部裂图。
 
 ## 8. 验收环境记录（历史）
 
