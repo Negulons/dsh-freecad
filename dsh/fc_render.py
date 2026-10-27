@@ -236,7 +236,8 @@ def _group_holes(holes):
     order = []
     for h in holes:
         key = (round(h["diameter"], 4), bool(h["through"]),
-               round(h.get("depth", 0), 3) if not h["through"] else None)
+               round(h.get("depth", 0), 3) if not h["through"] else None,
+               h.get("kind") or "hole", round(h.get("length", 0), 3))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -261,7 +262,11 @@ def _draw_hole_labels(scene, view, holes, view_name, tx, scale, x_right, y_top):
     ly = y_top + 4.0
     for key, hs in groups:
         d = key[0]
-        if key[1]:
+        if hs[0].get("kind") == "slot":
+            shape = "%s×%s" % (fmt_num(d), fmt_num(hs[0].get("length", 0)))
+            label = ("%d× %s 通槽" % (len(hs), shape)) if key[1] else \
+                    ("%d× %s ↧%s" % (len(hs), shape, fmt_num(key[2])))
+        elif key[1]:
             label = ("%d×Ø%s THRU" % (len(hs), fmt_num(d)))
         else:
             label = ("%d×Ø%s ↧%s" % (len(hs), fmt_num(d), fmt_num(key[2])))
@@ -348,9 +353,15 @@ def _hole_table_block(scene, rows, x, y, col_w, row_h, title_h, total_w, spans):
         # must still state its effective cutting depth; only a hole spanning
         # the whole part is simply marked 通.
         depth = "通" if (hole.get("through") and span and d >= span - 1e-3) else fmt_num(d)
+        if hole.get("kind") == "slot":
+            # Width × length, matching the S-numbers and the legend line.
+            diameter = "%s×%s" % (fmt_num(hole.get("diameter", 0)),
+                                  fmt_num(hole.get("length", 0)))
+        else:
+            diameter = fmt_num(hole.get("diameter", 0))
         values = [
             hole.get("id") or "",
-            fmt_num(hole.get("diameter", 0)),
+            diameter,
             "1",
             hole.get("axisName") or "",
             depth,
@@ -401,6 +412,9 @@ def _hole_table(scene, holes, W, H, bbox=None, x=None, y=None):
     if blocks > 1:
         label = "%s（共 %d 孔）" % (label, count)
     scene.text(x, y - 3.0, label, 3.0, INK, "start", bold=True)
+    if any(h.get("kind") == "slot" for h in holes):
+        scene.text(x + 34.0, y - 3.0, "S = 长圆孔（宽×长）", 2.6, INK, "start",
+                   layer="TITLE")
     for b in range(blocks):
         chunk = holes[b * rows_per_block:(b + 1) * rows_per_block]
         if not chunk:
@@ -424,6 +438,15 @@ def build_scene(shape, views, holes, meta, options):
     top = views.get("top")
     right = views.get("right")
 
+    # Reserve a column on the right for the hole table.  Without this the auto
+    # scale happily grows the views over the table (a 3:1 part pushed the table
+    # on top of the top view).
+    hole_table_w = 0.0
+    if holes:
+        blocks = min(3, max(1, (len(holes) + 9) // 10))
+        hole_table_w = 117.0 * blocks + 6.0 * (blocks - 1)
+    reserve_right = hole_table_w + 10.0 if holes else 0.0
+
     def dims(scale):
         fw = front["width"] * scale
         fh = front["height"] * scale
@@ -433,7 +456,7 @@ def build_scene(shape, views, holes, meta, options):
         rh = right["height"] * scale if right else 0
         iw = views["iso"]["width"] * scale if "iso" in views else 0
         ih = views["iso"]["height"] * scale if "iso" in views else 0
-        total_w = rw + (GAP if rw else 0) + fw + (GAP + iw if iw else 0) + 40
+        total_w = rw + (GAP if rw else 0) + fw + (GAP + iw if iw else 0) + 40 + reserve_right
         total_h = fh + (GAP + th if top else 0) + 24
         if "iso" in views:
             total_h = max(total_h, ih + 24)
@@ -507,10 +530,11 @@ def build_scene(shape, views, holes, meta, options):
                 dim_v(scene, y, y + view["height"] * scale,
                       x + view["width"] * scale + 14.0,
                       fmt_num(view["height"]), ext_from=x + view["width"] * scale)
-    if compact:
-        _hole_table(scene, holes, W, H, shape.BoundBox, x=W - MARGIN - 3.0 - 117.0, y=48.0)
-    else:
-        _hole_table(scene, holes, W, H, shape.BoundBox)
+    if holes:
+        # Top-right corner: the views are laid out to the left of this column,
+        # so the table can never overlap them.
+        _hole_table(scene, holes, W, H, shape.BoundBox,
+                    x=W - MARGIN - 3.0 - hole_table_w, y=48.0)
 
     # notes in the lower-left area, away from the title block
     note_y = H - 40.0

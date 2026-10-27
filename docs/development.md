@@ -77,6 +77,10 @@ node test\call_tool.mjs freecad_step_to_drawing args.json
 6. **纯排版单元测试**：`python tests/test_renderer.py`（无 FreeCAD、无 matplotlib 也能跑，CI 里就是这么做的）。
    覆盖孔表分块（>10 孔不再截断）与隐藏线去重（对称件吐回的"影子"隐藏线必须丢掉），
    这两类 bug 靠肉眼很难发现，只能靠断言。
+7. **孔识别断言**：`freecadcmd tests/test_holes.py`（需要 FreeCAD，CI 没装所以不进 CI）。
+   22 条断言覆盖通孔、径向孔、45° 斜孔深度、腰形孔、沉头孔两段、曲面上的孔；
+   新增识别规则时先在这里加用例。注意：脚本结尾用 `sys.exit`，所以所有输出都 `flush=True`——
+   否则 FreeCAD 直接吞掉缓冲区，看起来像"什么都没执行"。
 
 ## 7. 发布到 npm（实操记录，2026-10）
 

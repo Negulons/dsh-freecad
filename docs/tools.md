@@ -40,12 +40,16 @@
   "shape": { shape_stats 结构 },
   "bbox": { "min": [...], "max": [...], "size": [...] },
   "holes": [ hole 结构 ... ],
+  "curvedFeatures": [ curved 结构 ... ],
   "warnings": [],
   "detail": { "faces": [...], "facesTruncated": false, "edges": [...], "edgesTruncated": false }
 }
 ```
 
-- `holes` 最多 200 条，按“轴线 Z→Y→X、坐标、直径”排序，编号 `H1..Hn`。
+- `holes` 最多 200 条，按“轴线 Z→Y→X、坐标、直径”排序，编号 `H1..Hn`（腰形孔是 `S1..Sn`）。
+- `holes[i].kind`：`hole`（圆孔，含斜孔）或 `slot`（腰形孔，额外带 `width` / `length`，直径字段即宽度）。
+- `holes[i].depth` 取圆柱面自身的接缝长度，斜孔也是真实轴长；`through` 只在孔贯穿整个包围盒时为真。
+- `curvedFeatures`：开在曲面或过渡面上、无法按完整圆柱判定的孔（例如环件侧壁的径向孔），给 `axis` / `radius` / `coverage` / `angleDeg`，由模型决定是否标注。
 - `detail.edges[i].index` 是 **1-based**，可直接用于 fillet/chamfer 的 `edges`。
 - 明细很大时用 `offset`/`limit` 翻页：返回里带 `edgesTotal` / `facesTotal` 与 `nextEdgeOffset` / `nextFaceOffset`，按提示翻即可读全；每条边还带 `mid`（中点），方便和 `edgesNear` 配合。
 - 多对象文件会追加一条 `warnings`，提示“尺寸与图纸使用合并后的形状”。

@@ -508,7 +508,7 @@ function inspectTool(exec) {
   return {
     name: 'freecad_inspect_step',
     description:
-      '读取 STEP/STP（也支持 IGES/BREP）立体 CAD 文件，返回对象列表、包围盒、体积、面/边数量、圆柱孔识别结果（直径/轴向/通孔/中心/深度）以及可选的面和边明细。编辑前先用它确认边缘索引和孔位。所有长度单位为 mm。',
+      '读取 STEP/STP（也支持 IGES/BREP）立体 CAD 文件，返回对象列表、包围盒、体积、面/边数量、圆柱孔识别结果（直径/轴向/通孔/中心/深度）、长圆孔（宽×长）以及非整圆的凹圆柱面（内腔弧、圆底槽等，curvedFeatures）。编辑前先用它确认边缘索引和孔位。所有长度单位为 mm。',
     parameters: {
       type: 'object',
       properties: {
@@ -527,16 +527,28 @@ function inspectTool(exec) {
         const b = s.bbox || {}
         const size = b.size || []
         const holes = value.holes || []
+        const curved = value.curvedFeatures || []
+        const slots = holes.filter((h) => h.kind === 'slot')
         const lines = [
           `📐 ${value.file?.name || value.input}`,
           `尺寸 ${size.map((x) => Number(x).toFixed(2)).join(' × ')} mm | 体积 ${Number(s.volume || 0).toFixed(2)} mm³ | ${s.solids ?? '?'} solid / ${s.faces ?? '?'} faces`,
-          `对象 ${value.objectCount} 个 | 有效 ${s.valid} | 孔 ${holes.length} 个`,
+          `对象 ${value.objectCount} 个 | 有效 ${s.valid} | 孔 ${holes.length - slots.length} 个 | 长圆孔 ${slots.length} 个 | 曲面特征 ${curved.length} 处`,
         ]
         for (const h of holes.slice(0, 12)) {
+          const at = `@ (${h.center.map((x) => Number(x).toFixed(1)).join(', ')})`
+          if (h.kind === 'slot') {
+            const how = h.through ? '通槽' : `深${h.depth}`
+            lines.push(`  ${h.id}: 长圆孔 ${h.length}×${h.diameter} ${h.axisName}轴 ${how} ${at}`)
+            continue
+          }
           const kind = h.through ? `通孔${h.depth ? ` 厚${h.depth}` : ''}` : `盲孔深${h.depth}`
-          lines.push(`  ${h.id}: Ø${h.diameter} ${h.axisName}轴 ${kind} @ (${h.center.map((x) => Number(x).toFixed(1)).join(', ')})`)
+          lines.push(`  ${h.id}: Ø${h.diameter} ${h.axisName}轴 ${kind} ${at}`)
         }
-        if (holes.length > 12) lines.push(`  … 共 ${holes.length} 个孔`)
+        if (holes.length > 12) lines.push(`  … 共 ${holes.length} 个孔/槽`)
+        for (const g of curved.slice(0, 6)) {
+          lines.push(`  ${g.id}: 弧面 R${g.radius} ${g.axisName}轴 ${g.angleDeg}° 深${g.depth} @ (${g.center.map((x) => Number(x).toFixed(1)).join(', ')})（凹圆柱面，非整圆：内腔弧、圆底槽这类）`)
+        }
+        if (curved.length > 6) lines.push(`  … 共 ${curved.length} 处曲面特征`)
         const detail = value.detail || {}
         if (Array.isArray(detail.edges) && detail.edges.length) {
           const total = detail.edgesTotal ?? detail.edges.length

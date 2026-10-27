@@ -114,9 +114,9 @@ path, a `bin` directory, or an installation root.
 | Tool | Purpose |
 | --- | --- |
 | `freecad_status` | Reports the `freecadcmd` path, version and worker readiness. **Call this first when something is wrong.** |
-| `freecad_inspect_step` | Reads STEP/STP/IGES/BREP: bounding box, volume, area, face/edge/vertex counts, object list, cylindrical-hole detection (diameter, axis, through/blind, depth, centre). `detail: true` returns faces and edges — use it to get the 1-based edge indices for fillets and chamfers. |
+| `freecad_inspect_step` | Reads STEP/STP/IGES/BREP: bounding box, volume, area, face/edge/vertex counts, object list, hole detection — round (incl. oblique), obround slots and holes on curved faces (diameter, axis, through/blind, depth, centre). `detail: true` returns faces and edges — use it to get the 1-based edge indices for fillets and chamfers. |
 | `freecad_edit_step` | Translate/rotate/scale/mirror, drill through or blind holes, boolean with box/cylinder/sphere, fillet or chamfer by 1-based edge index; writes a new STEP (never overwrites the input unless asked) and optionally a FCStd. |
-| `freecad_step_to_drawing` | HLR hidden-line removal → first-angle front/top/right/iso views, automatic sheet and scale, overall dimensions, hole centrelines, hole table, title block; exports SVG / DXF / PDF / PNG. |
+| `freecad_step_to_drawing` | HLR hidden-line removal → first-angle front/top/right/iso views, automatic sheet and scale, overall dimensions, hole centrelines, hole table (slots recorded as `S1` with width×length), title block; exports SVG / DXF / PDF / PNG. |
 | `freecad_measure` | Read-only measurements: distance between points/faces/edges (including `planeOffset` for plate thickness), angle between faces or straight edges, diameter of cylindrical faces or circular edges. |
 
 All lengths are **mm**. Parameter details: [docs/tools.md](docs/tools.md).

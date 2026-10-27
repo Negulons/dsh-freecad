@@ -377,8 +377,95 @@ def _through_hole(shape, entry, exit, axis):
         return False
 
 
+def _seam_length(face, axis):
+    """Length of the face along its axis, taken from the straight seam edge.
+
+    An oblique hole cut by two parallel planes has a wall whose *parameter*
+    range along the axis is longer than the hole itself (the trim curves swing
+    up and down with the angle), but its seam edge is a straight line of exactly
+    the drilled length.  Using that line keeps the depth honest.
+    """
+    best = 0.0
+    try:
+        edges = list(face.Edges)
+    except Exception:
+        return 0.0
+    for edge in edges:
+        try:
+            if edge.Curve.__class__.__name__ != "Line":
+                continue
+            direction = normalized(edge.Curve.Direction)
+            if abs(dot(direction, axis)) < 0.999:
+                continue
+            p0 = edge.Vertexes[0].Point
+            p1 = edge.Vertexes[-1].Point
+            best = max(best, abs(dot(p1 - p0, axis)))
+        except Exception:
+            continue
+    return best
+
+
+def _axial_extent(face, surface, axis, steps=10):
+    """Axial extent of the *trimmed* face, measured on an interior uv grid.
+
+    Sampling the boundary edges is not enough: for an oblique hole the trimmed
+    edges can extend beyond the cutting region, and for a face split by a
+    boolean the seam edge alone under-reports the length.  An interior grid of
+    the trimmed surface always lands inside the face.
+    """
+    values = []
+    try:
+        pr = face.ParameterRange
+        for i in range(steps + 1):
+            u = pr[0] + (pr[1] - pr[0]) * (i / float(steps))
+            for j in range(steps + 1):
+                v = pr[2] + (pr[3] - pr[2]) * (j / float(steps))
+                try:
+                    p = face.valueAt(u, v)
+                except Exception:
+                    continue
+                values.append(dot(p - surface.Center, axis))
+    except Exception:
+        pass
+    if values:
+        return min(values), max(values)
+    return _sample_face_t(face, surface, axis)
+
+
+def _slot_walls(planes, axis, offset, c1, c2, radius, tol=0.12):
+    """True when two half cylinders are joined by tangent walls (a slot).
+
+    A slot is not just "two halves": two independent half-bores could sit side
+    by side too.  What makes it a slot is the pair of flat walls tangent to
+    both cylinders, parallel to the axis and to the offset direction.
+    """
+    if length(offset) < 1.0e-6:
+        return False
+    along = normalized(offset)
+    hits = 0
+    for normal, point in planes:
+        if abs(dot(normal, axis)) > 1.0e-3:
+            continue
+        if abs(dot(normal, along)) > 1.0e-3:
+            continue
+        d1 = dot(c1 - point, normal)
+        d2 = dot(c2 - point, normal)
+        if d1 * d2 <= 0:
+            continue
+        if abs(abs(d1) - radius) <= tol and abs(abs(d2) - radius) <= tol:
+            hits += 1
+    return hits >= 2
+
+
 def detect_holes(shape, max_holes=200):
-    """Detect concave full-cylinder faces and return machining hole records."""
+    """Detect machined concave cylinders: round holes, slots, curved features.
+
+    A cylinder cut by another surface does not always arrive as one face:
+    booleans split it into halves, quarters or a seam pair.  The old
+    implementation rejected every fragment below 60 % coverage *before*
+    merging, so a slot (two half cylinders) or a split bore silently vanished.
+    Fragments are now clustered first and judged as a whole.
+    """
     raw = []
     try:
         faces = list(shape.Faces)
@@ -396,16 +483,12 @@ def detect_holes(shape, max_holes=200):
             radius = float(surface.Radius)
             if radius <= 1.0e-5:
                 continue
-            tmin, tmax = _sample_face_t(face, surface, axis)
-            depth = tmax - tmin
-            if depth <= 1.0e-4:
+            tmin, tmax = _axial_extent(face, surface, axis)
+            seam = _seam_length(face, axis)
+            sweep_len = seam if seam > 1.0e-6 else (tmax - tmin)
+            if sweep_len <= 1.0e-4:
                 continue
-            # A full cylinder has one of the largest possible surface areas.
-            expected = 2.0 * math.pi * radius * depth
-            coverage = float(face.Area) / expected if expected > 0 else 0.0
-            if coverage < 0.60:
-                continue
-            # Concave cylinder => hole.  The face normal points toward the axis.
+            # Concave cylinder => the face normal points toward the axis.
             p, normal = _face_normal_sample(face)
             radial = p - surface.Center
             radial = radial - axis * dot(radial, axis)
@@ -413,62 +496,131 @@ def detect_holes(shape, max_holes=200):
                 continue
             if dot(normal, normalized(radial)) > -1.0e-4:
                 continue
-            entry = surface.Center + axis * tmin
-            exit = surface.Center + axis * tmax
-            center = surface.Center + axis * ((tmin + tmax) * 0.5)
+            area = float(face.Area)
             raw.append({
                 "axis": axis,
                 "radius": radius,
                 "diameter": radius * 2.0,
                 "tmin": tmin,
                 "tmax": tmax,
-                "depth": depth,
-                "center": center,
-                "entry": entry,
-                "exit": exit,
-                "through": _through_hole(shape, entry, exit, axis),
-                "coverage": coverage,
-                "area": float(face.Area),
+                "length": sweep_len,
+                "depth": sweep_len,
+                "area": area,
+                # Swept angle of the wall; a full bore sweeps 2*pi.
+                "angle": area / (radius * sweep_len) if sweep_len > 0 else 0.0,
                 "surfaceCenter": FreeCAD.Vector(surface.Center),
             })
         except Exception:
             continue
 
-    # Merge coaxial, same-diameter pieces (e.g. one hole split into two faces).
-    merged = []
+    # Planar faces are used to recognise the straight walls of a slot.
+    planes = []
+    for face in faces:
+        try:
+            surf = face.Surface
+            if surf.__class__.__name__ != "Plane":
+                continue
+            planes.append((normalized(surf.Axis), FreeCAD.Vector(surf.Position)))
+        except Exception:
+            continue
+
+    # Cluster coaxial, same-diameter fragments (one bore split by a boolean,
+    # or the two halves of a slot).  Each cluster keeps the lateral offset of
+    # its members: a non-zero offset means the fragments sit side by side,
+    # which is a slot rather than a hole.
+    clusters = []
     for cand in raw:
         target = None
-        for hole in merged:
-            if abs(hole["radius"] - cand["radius"]) > 0.02:
+        for group in clusters:
+            ref = group["parts"][0]
+            if abs(ref["radius"] - cand["radius"]) > 0.02:
                 continue
-            if abs(dot(hole["axis"], cand["axis"])) < 0.9995:
+            if abs(dot(ref["axis"], cand["axis"])) < 0.9995:
                 continue
-            delta = cand["surfaceCenter"] - hole["surfaceCenter"]
+            delta = cand["surfaceCenter"] - ref["surfaceCenter"]
             perp = delta - cand["axis"] * dot(delta, cand["axis"])
-            if length(perp) > 0.08:
+            # Same axis line, or parallel axes displaced sideways by a slot.
+            if length(perp) > max(0.08, 3.5 * cand["radius"]):
+                if not _slot_walls(planes, cand["axis"], perp, ref["surfaceCenter"],
+                                   cand["surfaceCenter"], cand["radius"]):
+                    continue
+            # Never merge two complete bores into one "surface".
+            if group["angle"] + cand["angle"] > 2.0 * math.pi * 1.05:
                 continue
-            if cand["tmax"] < hole["tmin"] - 1.0 or cand["tmin"] > hole["tmax"] + 1.0:
+            if cand["tmax"] < group["tmin"] - 1.0 or cand["tmin"] > group["tmax"] + 1.0:
                 continue
-            target = hole
+            target = group
             break
         if target is None:
-            merged.append(dict(cand))
+            clusters.append({
+                "parts": [cand],
+                "axis": cand["axis"],
+                "radius": cand["radius"],
+                "tmin": cand["tmin"],
+                "tmax": cand["tmax"],
+                "length": cand["length"],
+                "area": cand["area"],
+                "angle": cand["angle"],
+            })
         else:
+            target["parts"].append(cand)
             target["tmin"] = min(target["tmin"], cand["tmin"])
             target["tmax"] = max(target["tmax"], cand["tmax"])
-            target["depth"] = target["tmax"] - target["tmin"]
-            target["center"] = target["surfaceCenter"] + target["axis"] * ((target["tmin"] + target["tmax"]) * 0.5)
-            target["entry"] = target["surfaceCenter"] + target["axis"] * target["tmin"]
-            target["exit"] = target["surfaceCenter"] + target["axis"] * target["tmax"]
+            target["length"] = max(target["length"], cand["length"])
             target["area"] += cand["area"]
-            target["coverage"] = max(target["coverage"], cand["coverage"])
+            target["angle"] += cand["angle"]
 
     holes = []
-    for hole in merged:
-        expected = 2.0 * math.pi * hole["radius"] * hole["depth"]
-        hole["coverage"] = hole["area"] / expected if expected > 0 else 0.0
-        hole["through"] = _through_hole(shape, hole["entry"], hole["exit"], hole["axis"])
-        holes.append(hole)
+    curved = []
+    for group in clusters:
+        axis = group["axis"]
+        radius = group["radius"]
+        depth = group["length"]
+        coverage = group["angle"] / (2.0 * math.pi)
+        ref = group["parts"][0]
+        base = ref["surfaceCenter"]
+        # Lateral spread of the fragments: the slot offset.
+        offset = FreeCAD.Vector(0, 0, 0)
+        for part in group["parts"][1:]:
+            delta = part["surfaceCenter"] - base
+            delta = delta - axis * dot(delta, axis)
+            if length(delta) > length(offset):
+                offset = delta
+        span = length(offset)
+        mid = FreeCAD.Vector(base)
+        if span > 0:
+            mid = base + offset * 0.5
+        center = mid + axis * ((group["tmin"] + group["tmax"]) * 0.5)
+        entry = mid + axis * group["tmin"]
+        exit = mid + axis * group["tmax"]
+        record = {
+            "axis": axis,
+            "radius": radius,
+            "diameter": radius * 2.0,
+            "depth": depth,
+            "center": center,
+            "entry": entry,
+            "exit": exit,
+            "coverage": coverage,
+            "offset": span,
+        }
+        if coverage >= 0.80 and span <= max(0.10, 0.20 * radius):
+            record["kind"] = "hole"
+            record["through"] = _through_hole(shape, entry, exit, axis)
+            holes.append(record)
+        elif coverage >= 0.80 and span > max(0.10, 0.20 * radius):
+            # Two half cylinders facing each other => obround slot.
+            record["kind"] = "slot"
+            record["width"] = radius * 2.0
+            record["length"] = span + radius * 2.0
+            record["through"] = _through_hole(shape, entry, exit, axis)
+            holes.append(record)
+        else:
+            # A partial cylinder (round-bottom groove, bore arc, fillet run)
+            # is a real machined surface.  Report it instead of dropping it.
+            record["kind"] = "curved"
+            record["angleDeg"] = round(coverage * 360.0, 2)
+            curved.append(record)
 
     def sort_key(h):
         ax = axis_name(h["axis"])
@@ -479,9 +631,16 @@ def detect_holes(shape, max_holes=200):
     holes.sort(key=sort_key)
     holes = holes[:max_holes]
     out = []
+    slot_no = 0
     for idx, hole in enumerate(holes, 1):
-        out.append({
-            "id": "H%d" % idx,
+        if hole["kind"] == "slot":
+            slot_no += 1
+            hole_id = "S%d" % slot_no
+        else:
+            hole_id = "H%d" % idx
+        item = {
+            "id": hole_id,
+            "kind": hole["kind"],
             "axis": vlist(hole["axis"]),
             "axisName": axis_name(hole["axis"]),
             "diameter": round(hole["diameter"], 6),
@@ -492,8 +651,29 @@ def detect_holes(shape, max_holes=200):
             "entry": vlist(hole["entry"]),
             "exit": vlist(hole["exit"]),
             "coverage": round(float(hole["coverage"]), 4),
+        }
+        if hole["kind"] == "slot":
+            item["width"] = round(hole["width"], 6)
+            item["length"] = round(hole["length"], 6)
+        out.append(item)
+
+    curved.sort(key=sort_key)
+    curved_out = []
+    for idx, item in enumerate(curved[:max_holes], 1):
+        curved_out.append({
+            "id": "G%d" % idx,
+            "kind": "curved",
+            "axis": vlist(item["axis"]),
+            "axisName": axis_name(item["axis"]),
+            "radius": round(item["radius"], 6),
+            "diameter": round(item["diameter"], 6),
+            "depth": round(item["depth"], 6),
+            "angleDeg": item["angleDeg"],
+            "center": vlist(item["center"]),
+            "coverage": round(float(item["coverage"]), 4),
         })
-    return out
+    return out, curved_out
+
 
 
 def _project_unit_local(direction, unit_vec):

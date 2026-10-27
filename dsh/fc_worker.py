@@ -92,6 +92,7 @@ def do_inspect(req):
     path, doc, entries, shape = _shape_doc(req)
     try:
         detail = bool(req.get("detail") or req.get("options", {}).get("detail"))
+        holes, curved = C.detect_holes(shape)
         result = {
             "input": path,
             "file": C.file_info(path),
@@ -100,7 +101,8 @@ def do_inspect(req):
             "objectCount": len(entries),
             "shape": C.shape_stats(shape),
             "bbox": C.bbox_dict(C.tight_bbox(shape)),
-            "holes": C.detect_holes(shape),
+            "holes": holes,
+            "curvedFeatures": curved,
             "warnings": [],
         }
         if len(entries) > 1:
@@ -284,7 +286,7 @@ def do_edit(req):
             "operations": log,
             "before": before,
             "after": C.shape_stats(shape),
-            "holes": C.detect_holes(shape),
+            "holes": C.detect_holes(shape)[0],
         }
         if req.get("saveFCStd"):
             fcstd = os.path.splitext(out)[0] + ".FCStd"
@@ -333,7 +335,7 @@ def do_drawing(req):
         views = {}
         for name in views_wanted:
             views[name] = C.project_view(shape, name, hidden=bool(options.get("hiddenLines", False)))
-        holes = C.detect_holes(shape)
+        holes = C.detect_holes(shape)[0]
         meta = {
             "title": options.get("title") or "二维加工图",
             "material": options.get("material") or "—",

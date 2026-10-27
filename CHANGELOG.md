@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.4.0 — 孔识别的三类盲区
+
+### Fixed
+
+- **腰形孔（长圆孔）现在能认**。两段平行的半圆柱 + 平直侧壁合成一条记录：直径=宽、
+  `length`=全长，孔表里记 `S1`、形状写 `宽×长`，标注写 `2× 8×28 通槽`。
+- **斜孔深度不再多算**。深度改用圆柱面自身的接缝长度，而不是参数区间——以前 45° 孔会
+  报出被上表面切掉之后整段的长度。
+- **开在曲面/过渡面上的孔不再消失**。以前这类孔（例如环件侧壁的径向孔）直接漏检；
+  现在单独归到 `curvedFeatures`，给轴向、半径、覆盖率、包角，由模型决定要不要标。
+- **孔表不再压住视图**。选比例时把孔表那一列扣掉，表格固定在右上角；3:1 之类的大比例
+  以前会把表格叠在俯视图上。
+
+### Internal
+
+- `detect_holes` 改为「先聚类、后过滤」：半径/轴线/轴向范围相近的面先合成候选再判覆盖率，
+  否则半圆柱面永远过不了 0.6 门槛。
+- 新增 `tests/test_holes.py`（22 条断言：通孔、径向孔、斜孔、腰形孔、沉头孔、曲面孔），
+  依赖 FreeCAD，手动跑：`freecadcmd tests/test_holes.py`。
+
 ## 0.3.0 — tools an LLM can actually steer: measure, page, pick edges by position
 
 Everything here targets one failure mode: the model has a tool but cannot get the
