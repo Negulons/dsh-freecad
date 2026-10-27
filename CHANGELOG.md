@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.2.6 — hole table keeps every row, hidden lines stop duplicating outlines
+
+### Fixed
+
+- The hole table had a hard 10-row cap (`holes[:10]` in `fc_render.py`): a part with more
+  holes silently lost rows. It now continues in extra blocks (10 rows each, at most three)
+  and the caption says `共 N 孔`.
+- Shadow hidden lines: for symmetric extrusions OCCT hands back one hidden edge per visible
+  one, so `hiddenLines: true` drew dashed line work on top of solid outlines. Hidden edges
+  fully covered by visible geometry (polylines, sharp-edge lines and circles alike) are now
+  dropped. Sample drawing: 12 of 47 HIDDEN segments sat on OUTLINE, now 0.
+- `drawing_manifest.json` no longer claims `generatedBy: dsh-freecad 0.1.0`; it reads the
+  version from `package.json` and reports `holeCount` plus `hiddenLinesSkipped`.
+
+### Added
+
+- `tests/test_renderer.py`: ten layout-only unit tests (hole-table pagination, hidden-line
+  deduplication, reversed endpoints) that need neither FreeCAD nor matplotlib; CI runs them.
+
 ## 0.2.5 — lead with the plugins page
 
 ### Changed

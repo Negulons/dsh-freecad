@@ -74,6 +74,9 @@ node test\call_tool.mjs freecad_step_to_drawing args.json
 3. **格式回归**：DXF 能被 FreeCAD `importDXF.insert` 重新导入，对象数量在合理范围（样例 1.5k 量级，不是 1.6 万）。
 4. **版面闸门**：凡是走 Scene 的排版，出图前必须 `layout_check.check_scene()` 全绿。
 5. **安装回归**：在临时 profile 上跑 `install.mjs` 两次，确认幂等、备份文件生成、依赖正确。
+6. **纯排版单元测试**：`python tests/test_renderer.py`（无 FreeCAD、无 matplotlib 也能跑，CI 里就是这么做的）。
+   覆盖孔表分块（>10 孔不再截断）与隐藏线去重（对称件吐回的"影子"隐藏线必须丢掉），
+   这两类 bug 靠肉眼很难发现，只能靠断言。
 
 ## 7. 发布到 npm（实操记录，2026-10）
 

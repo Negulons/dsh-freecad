@@ -335,8 +335,10 @@ def do_drawing(req):
             "hiddenLines": bool(drawing.get("hiddenLines", False)),
             "views": {k: {"width": v["width"], "height": v["height"]} for k, v in views.items()},
             "holes": holes,
+            "holeCount": len(holes),
+            "hiddenLinesSkipped": int(getattr(scene, "hiddenSkipped", 0)),
             "files": written,
-            "generatedBy": "dsh-freecad 0.1.0",
+            "generatedBy": "dsh-freecad " + _plugin_version(),
             "generatedAt": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
         }
         manifest_path = os.path.join(out_dir, "drawing_manifest.json")
@@ -346,6 +348,18 @@ def do_drawing(req):
         return manifest
     finally:
         FreeCAD.closeDocument(doc.Name)
+
+
+def _plugin_version():
+    """Version of this package, so manifests stop lying after every release."""
+    try:
+        import json as _json
+        pkg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "package.json")
+        with open(pkg, "r", encoding="utf-8") as fh:
+            return str(_json.load(fh).get("version") or "unknown")
+    except Exception:
+        return "unknown"
 
 
 def dispatch(req):

@@ -139,6 +139,17 @@ def dim_v(scene, y1, y2, x, label, ext_from=None, color=DIM):
                rotation=90, layer="DIM")
 
 
+def _seg_key(p1, p2, nd=3):
+    a = (round(float(p1[0]), nd), round(float(p1[1]), nd))
+    b = (round(float(p2[0]), nd), round(float(p2[1]), nd))
+    return (a, b) if a <= b else (b, a)
+
+
+def _circle_key(entity, nd=3):
+    return (round(float(entity["c"][0]), nd), round(float(entity["c"][1]), nd),
+            round(float(entity["r"]), nd))
+
+
 def _place_view(scene, view, x, y, scale, hidden=False):
     """Draw one projected view; (x,y) is the top-left of its extents."""
     def tx(p):
@@ -158,11 +169,37 @@ def _place_view(scene, view, x, y, scale, hidden=False):
         scene.polyline([tx(p) for p in poly], 0.38, INK, layer="OUTLINE")
     draw_exact(view.get("exactVisible") or [], 0.38, INK, None, "OUTLINE")
     if hidden:
+        # Symmetric parts make OCCT emit a hidden edge on top of every visible
+        # one; drawing both leaves hidden line work over solid outlines.  Only
+        # keep hidden edges that are not fully covered by visible geometry.
+        visible_segments = set()
+        for poly in view["visible"]:
+            for i in range(len(poly) - 1):
+                visible_segments.add(_seg_key(poly[i], poly[i + 1]))
+        visible_circles = set()
+        for entity in view.get("exactVisible") or []:
+            if entity["type"] == "line":
+                visible_segments.add(_seg_key(entity["p1"], entity["p2"]))
+            elif entity["type"] == "circle":
+                visible_circles.add(_circle_key(entity))
+        skipped = 0
         for poly in view["hidden"]:
+            segments = [(poly[i], poly[i + 1]) for i in range(len(poly) - 1)]
+            if segments and all(_seg_key(a, b) in visible_segments
+                                for a, b in segments):
+                skipped += 1
+                continue
             scene.polyline([tx(p) for p in poly], 0.22, HIDDEN,
                            dash="3,1.5", layer="HIDDEN")
-        draw_exact(view.get("exactHidden") or [], 0.22, HIDDEN,
-                   "3,1.5", "HIDDEN")
+        for entity in view.get("exactHidden") or []:
+            if entity["type"] == "line" and _seg_key(entity["p1"], entity["p2"]) in visible_segments:
+                skipped += 1
+                continue
+            if entity["type"] == "circle" and _circle_key(entity) in visible_circles:
+                skipped += 1
+                continue
+            draw_exact([entity], 0.22, HIDDEN, "3,1.5", "HIDDEN")
+        scene.hiddenSkipped = getattr(scene, "hiddenSkipped", 0) + skipped
     # view label
     scene.text(x + view["width"] * scale * 0.5,
                y + view["height"] * scale + 7.0,
@@ -292,29 +329,12 @@ def _hole_xy(hole):
     return None, None
 
 
-def _hole_table(scene, holes, W, H, bbox=None, x=None, y=None):
-    """A compact hole table, normally above the title block; A4 places it top-right."""
-    if not holes:
-        return
-    rows = list(holes[:10])
-    col_w = [13.0, 15.0, 10.0, 9.0, 18.0, 26.0, 26.0]
-    total_w = sum(col_w)
-    row_h = 6.5
-    title_h = 8.0
+def _hole_table_block(scene, rows, x, y, col_w, row_h, title_h, total_w, spans):
+    """Draw one block of hole rows (header included) with its top-left at x,y."""
     table_h = title_h + row_h * (len(rows) + 1)
-    inner_right = W - MARGIN - 3.0
-    inner_top = H - MARGIN - 3.0
-    if x is None:
-        x = inner_right - total_w
-    if y is None:
-        y = inner_top - 32.0 - 8.0 - table_h
-    scene.text(x, y - 3.0, "孔表 / HOLE TABLE", 3.0, INK, "start", bold=True)
     scene.rect(x, y, total_w, table_h, 0.35, INK, layer="TITLE")
     scene.line(x, y + title_h, x + total_w, y + title_h, 0.25, INK, layer="TITLE")
     headers = ["孔号", "直径", "数量", "轴", "深度", "X", "Y"]
-    spans = {}
-    if bbox is not None:
-        spans = {"X": bbox.XLength, "Y": bbox.YLength, "Z": bbox.ZLength}
     for i, (cw, text) in enumerate(zip(col_w, headers)):
         cx = x + sum(col_w[:i])
         scene.text(cx + cw * 0.5, y + 5.6, text, 2.7, INK, "middle", layer="TITLE")
@@ -344,6 +364,49 @@ def _hole_table(scene, holes, W, H, bbox=None, x=None, y=None):
     for i in range(1, len(col_w)):
         cx = x + sum(col_w[:i])
         scene.line(cx, y + title_h, cx, y + table_h, 0.18, INK, layer="TITLE")
+    return table_h
+
+
+def _hole_table(scene, holes, W, H, bbox=None, x=None, y=None):
+    """A compact hole table, normally above the title block; A4 places it top-right.
+
+    Ten rows per block keeps the table readable, so a part with more holes
+    continues the table in a second (or third) block rightwards instead of
+    silently truncating rows as the old implementation did.
+    """
+    if not holes:
+        return
+    col_w = [13.0, 15.0, 10.0, 9.0, 18.0, 26.0, 26.0]
+    total_w = sum(col_w)
+    row_h = 6.5
+    title_h = 8.0
+    spans = {}
+    if bbox is not None:
+        spans = {"X": bbox.XLength, "Y": bbox.YLength, "Z": bbox.ZLength}
+    count = len(holes)
+    rows_per_block = 10
+    blocks = max(1, (count + rows_per_block - 1) // rows_per_block)
+    if blocks > 3:
+        rows_per_block = max(1, (count + 2) // 3)
+        blocks = 3
+    gap = 6.0
+    table_w = total_w * blocks + gap * (blocks - 1)
+    inner_right = W - MARGIN - 3.0
+    inner_top = H - MARGIN - 3.0
+    if y is None:
+        y = inner_top - 32.0 - 8.0 - (title_h + row_h * (min(rows_per_block, count) + 1))
+    if x is None:
+        x = inner_right - table_w
+    label = "孔表 / HOLE TABLE"
+    if blocks > 1:
+        label = "%s（共 %d 孔）" % (label, count)
+    scene.text(x, y - 3.0, label, 3.0, INK, "start", bold=True)
+    for b in range(blocks):
+        chunk = holes[b * rows_per_block:(b + 1) * rows_per_block]
+        if not chunk:
+            break
+        _hole_table_block(scene, chunk, x + b * (total_w + gap), y,
+                          col_w, row_h, title_h, total_w, spans)
 
 
 def build_scene(shape, views, holes, meta, options):
