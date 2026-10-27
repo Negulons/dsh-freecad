@@ -140,8 +140,8 @@ node scripts\install.mjs
 | 安装脚本报 `profile package.json not found` | `DSH_PROFILE` 指错目录 | 指向真实的 profile 根目录 |
 | 安装脚本 pnpm 退出非 0 | 运行时缺 pnpm 或依赖冲突 | 手动在 profile 执行 `pnpm install`，看完整报错 |
 | 设置页点保存提示「没有保存成功」 | profile patch 把条目写进了 `- insert:` 块，落在只读层 | 改成顶层行 `- id: freecad` / `name: dsh-freecad`，保存即生效，无需重启 |
-| 便携版报 `Could not create directories. Failed with: Access is denied.` | 便携版把用户目录放在自己旁边，那个目录不可写 | 0.2.0 起宿主会自动把 `FREECAD_USER_HOME`/`FREECAD_USER_DATA`/`TMP` 指向系统临时目录；也可自己设这三个环境变量 |
-| `freecad_status` 显示「printed no FreeCAD version」 | 便携版缺上述环境变量，`--version` 直接失败 | 重启 DSH（0.2.0 的自动注入在启动时生效），或手动设环境变量 |
+| 便携版报 `Could not create directories. Failed with: Access is denied.` | 便携版把用户目录放在自己旁边，那个目录不可写 | 0.2.4 起宿主自动把 `FREECAD_USER_HOME`/`FREECAD_USER_DATA`/`TMP` 指向 `<FreeCAD>/dsh-user/`（不可写则退回系统临时目录）；也可自己设这三个环境变量 |
+| `freecad_status` 显示「printed no FreeCAD version」 | 便携版缺上述环境变量，`--version` 直接失败；重定向到 `%TEMP%` 时 FreeCAD 1.1.4 会报 `Unknown runtime error occurred while initializing FreeCAD` | 升级到 0.2.4 并重启 DSH（自动注入在启动时生效），或手动设这三个环境变量 |
 
 ## 8. 部署核对清单（每次发布前）
 

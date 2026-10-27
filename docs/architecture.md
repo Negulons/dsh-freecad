@@ -179,7 +179,8 @@ host 半侧只认一个字段，声明为 **volatile**（保存即重新应用�
 
 便携版 FreeCAD 还要一处约定：它把用户目录放在自己旁边，在受保护/只读目录下会报
 `Could not create directories`。宿主因此对「非 Program Files」的 `freecadcmd` 自动注入
-`FREECAD_USER_HOME` / `FREECAD_USER_DATA` / `TMP`（指向系统临时目录），安装版不动，用户配置不受影响。
+`FREECAD_USER_HOME` / `FREECAD_USER_DATA` / `TMP`：优先指向安装目录旁的 `dsh-user/`（便携版的常规位置，实测可用），
+目录不可写时退回系统临时目录；安装版不动，用户配置不受影响。
 旧的非 volatile 写法仍然兼容，所以两种配置文件都能用。
 
 ## 10. 超时与中止

@@ -120,8 +120,8 @@ D:\Tools\FreeCAD_1.1.4-Windows-x86_64-py311\bin\freecadcmd.exe
 ## 已知问题与排错
 
 **便携版 FreeCAD 启动报 `Could not create directories. Failed with: Access is denied.`**
-0.2.0 起宿主会自动处理：只要 `freecadcmd` 不在 `Program Files` 下，就把 `FREECAD_USER_HOME` /
-`FREECAD_USER_DATA` / `TMP` 指到系统临时目录。若你要指定自己的目录（例如保留 FreeCAD 偏好设置），
+0.2.4 起宿主会自动处理：只要 `freecadcmd` 不在 `Program Files` 下，就把 `FREECAD_USER_HOME` /
+`FREECAD_USER_DATA` / `TMP` 指到安装目录旁的 `dsh-user/`（不可写时退回系统临时目录）。若你要指定自己的目录（例如保留 FreeCAD 偏好设置），
 显式设置这三个变量即可覆盖：
 
 ```

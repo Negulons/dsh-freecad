@@ -183,32 +183,42 @@ function parseFreeCADVersion(output) {
 /**
  * Extra environment for a portable (unzipped) FreeCAD.
  *
- * The portable build keeps its user data next to the executable, which fails
- * with "Could not create directories. Access is denied." when that directory is
- * read-only or inside a protected location. Redirecting HOME/DATA/TMP to the OS
- * temp directory makes such builds work without touching their own folder.
- * Installed builds (Program Files) are left untouched so user preferences stay.
+ * The portable build initialises its user directories relative to the executable
+ * and aborts with "Could not create directories. Access is denied." when none of
+ * them is writable. Redirecting FREECAD_USER_HOME / FREECAD_USER_DATA / TMP makes
+ * such builds start without touching their own folder.
+ *
+ * The redirect goes next to the install (`<FreeCAD>/dsh-user`) first: a directory
+ * under %TEMP% was measured to fail on FreeCAD 1.1.4 with "Unknown runtime error
+ * occurred while initializing FreeCAD", while a folder beside the install works.
+ * %TEMP% stays as the fallback for read-only installs. Installed builds (Program
+ * Files) are left untouched so the user's own preferences stay in use.
  * @param cmd - the resolved freecadcmd path.
  * @returns environment additions, empty when none are needed.
  */
 function portableEnv(cmd) {
   if (process.env.FREECAD_USER_HOME) return {}
   if (/^[a-z]:[\\/]program files/i.test(cmd)) return {}
-  try {
-    const root = path.join(os.tmpdir(), 'dsh-freecad', 'freecad-home')
+  const bases = []
+  if (path.isAbsolute(cmd)) bases.push(path.join(path.dirname(path.dirname(cmd)), 'dsh-user'))
+  bases.push(path.join(os.tmpdir(), 'dsh-freecad', 'freecad-home'))
+  for (const base of bases) {
     const env = {
-      FREECAD_USER_HOME: path.join(root, 'home'),
-      FREECAD_USER_DATA: path.join(root, 'data'),
-      TMP: path.join(root, 'temp'),
-      TEMP: path.join(root, 'temp'),
+      FREECAD_USER_HOME: path.join(base, 'home'),
+      FREECAD_USER_DATA: path.join(base, 'data'),
+      TMP: path.join(base, 'temp'),
+      TEMP: path.join(base, 'temp'),
     }
-    for (const dir of [env.FREECAD_USER_HOME, env.FREECAD_USER_DATA, env.TMP]) {
-      fsSync.mkdirSync(dir, { recursive: true })
+    try {
+      for (const dir of [env.FREECAD_USER_HOME, env.FREECAD_USER_DATA, env.TMP]) {
+        fsSync.mkdirSync(dir, { recursive: true })
+      }
+      return env
+    } catch {
+      // fall through to the next base
     }
-    return env
-  } catch {
-    return {}
   }
+  return {}
 }
 
 /** Run `freecadcmd --version` and return the parsed version (or null). */

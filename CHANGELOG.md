@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.2.4 — portable FreeCAD actually starts
+
+### Fixed
+
+- Portable (7z) FreeCAD was still unusable: the user-directory redirect pointed at
+  `%TEMP%`, and FreeCAD 1.1.4 aborts there with
+  `Unknown runtime error occurred while initializing FreeCAD`. The redirect now goes to
+  `dsh-user/` beside the install (the portable convention, measured working), with the temp
+  directory kept as the fallback for read-only installs. `freecad_status` should now report
+  the real version instead of `printed no FreeCAD version`.
+
 ## 0.2.3 — README images behind a CDN
 
 ### Fixed

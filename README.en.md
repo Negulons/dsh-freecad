@@ -139,8 +139,9 @@ Those are three tool calls; output lands next to the input (`<name>_drawing/`, `
 ## Known issues
 
 **A portable FreeCAD fails with `Could not create directories. Failed with: Access is denied.`**
-Since 0.2.0 this is handled for you: when `freecadcmd` is not under `Program Files`, the host points
-`FREECAD_USER_HOME` / `FREECAD_USER_DATA` / `TMP` at the system temp directory. Set these yourself
+Since 0.2.4 this is handled for you: when `freecadcmd` is not under `Program Files`, the host points
+`FREECAD_USER_HOME` / `FREECAD_USER_DATA` / `TMP` at `dsh-user/` beside the install (system temp as
+fallback when that is not writable). Set these yourself
 when you want to keep FreeCAD preferences in a known place (your values win):
 
 ```
