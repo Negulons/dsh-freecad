@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.3.0 — tools an LLM can actually steer: measure, page, pick edges by position
+
+Everything here targets one failure mode: the model has a tool but cannot get the
+few numbers it needs to decide anything.
+
+### Added
+
+- `freecad_measure`: read-only measurement. Distance between points/faces/edges,
+  angle between two faces or two straight edges, diameter of a cylindrical face or
+  a circular edge.
+  - Two touching faces measure `distance: 0`, so the result also carries
+    `planeOffset` (plane-to-plane distance) — that is how you get plate thickness.
+  - One bad item no longer voids the batch: it comes back as `{index, error}` and
+    `resolved` reports how many succeeded.
+- `freecad_edit_step` can pick edges by position: `edgesNear: [x,y,z]` (every edge
+  nearby), `edgeAt: [x,y,z]` (the nearest one), `edgesNearRadius`. Indexes renumber
+  after every operation, so this is the robust path.
+  - `operations[i].edges` echoes the edges that were actually hit (index, length,
+    endpoints, midpoint) so the model can confirm the choice.
+  - A miss reports the nearest edge and its distance instead of "no match".
+- `freecad_inspect_step` pages properly: `offset` / `limit`, plus `edgesTotal` /
+  `facesTotal` and `nextEdgeOffset` / `nextFaceOffset`; every edge also reports `mid`.
+- Per-call `timeoutMs` (default 300 s, max 1800 s). The worker streams phases to a
+  progress file, results carry `timing.elapsedMs` and `timing.phases`, and timeout
+  errors now name the last phases instead of only saying it timed out.
+
+### Verified on `examples/demo_bracket.step`
+
+- `planeOffset` gives plate thickness 12.000 mm; a cylindrical face gives Ø25.000;
+  two points give 86.833 mm.
+- `edgesNear [50,30,11.9]` hits 3 edges; fillet R1 drops volume 99871.42 → 99834.68 mm³.
+- `offset: 8, limit: 5` returns edges #9–#13 with `nextEdgeOffset: 13`.
+
 ## 0.2.6 — hole table keeps every row, hidden lines stop duplicating outlines
 
 ### Fixed

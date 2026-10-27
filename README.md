@@ -95,9 +95,10 @@ D:\Tools\FreeCAD_1.1.4-Windows-x86_64-py311\bin\freecadcmd.exe
 | 工具 | 作用 |
 | --- | --- |
 | `freecad_status` | 检查 `freecadcmd` 路径、版本、worker 是否就绪。**出问题时先调它。** |
-| `freecad_inspect_step` | 读取 STEP/STP/IGES/BREP：包围盒、体积、面积、面/边/顶点数、对象列表、圆柱孔识别（直径/轴向/通孔/深度/中心）；`detail: true` 返回面与边明细，用于拿倒角/圆角需要的边索引。 |
-| `freecad_edit_step` | 平移/旋转/缩放/镜像、钻通孔或盲孔、盒/圆柱/球布尔增删、按 1-based 边索引倒圆角或倒角；导出新 STEP（默认不覆盖输入），可选同时存 FCStd。 |
-| `freecad_step_to_drawing` | HLR 隐藏线消除 → 第一角法主视图/俯视图/右视图/轴测图，自动图幅与比例、总尺寸、孔中心线、孔表、标题栏，导出 SVG / DXF / PDF / PNG。 |
+| `freecad_inspect_step` | 读取 STEP/STP/IGES/BREP：包围盒、体积、面积、面/边/顶点数、对象列表、圆柱孔识别（直径/轴向/通孔/深度/中心）；`detail: true` 返回面与边明细，用 `offset`/`limit` 翻页读全。 |
+| `freecad_edit_step` | 平移/旋转/缩放/镜像、钻通孔或盲孔、盒/圆柱/球布尔增删、倒圆角或倒角（按 1-based 索引，或按位置 `edgesNear` / `edgeAt`——索引每次编辑后会重排）；导出新 STEP（默认不覆盖输入），可选同时存 FCStd。 |
+| `freecad_step_to_drawing` | HLR 隐藏线消除 → 第一角法主视图/俯视图/右视图/轴测图，自动图幅与比例、总尺寸、孔中心线、孔表（超 10 孔自动分栏续排）、标题栏，导出 SVG / DXF / PDF / PNG。 |
+| `freecad_measure` | 不改模型，直接量：点/面/边之间的距离（含 `planeOffset` 两平面间距）、两面或两直边夹角、圆柱/圆边直径。量完就能拿去标图。 |
 
 所有长度单位为 **mm**。参数细节见 [docs/tools.md](docs/tools.md)。
 

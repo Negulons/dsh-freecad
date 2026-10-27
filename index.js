@@ -4,6 +4,7 @@
 //   freecad_inspect_step     read a STEP/STP file and report geometry + holes
 //   freecad_edit_step        transform / cut / fuse / fillet and export STEP
 //   freecad_step_to_drawing  HLR orthographic views + SVG/DXF/PDF/PNG
+//   freecad_measure          distance / angle / diameter without touching the file
 //   freecad_status           check the configured FreeCADCmd installation
 //
 // The heavy CAD work happens in dsh/fc_worker.py under FreeCADCmd.  The Node
@@ -68,6 +69,26 @@ const WORKER = (() => {
   return path.join(__dirname, 'dsh', 'fc_worker.py')
 })()
 const TIMEOUT_MS = 5 * 60_000
+const MAX_TIMEOUT_MS = 30 * 60_000
+
+/**
+ * Per-call timeout. Big assemblies legitimately take longer than five minutes;
+ * without this the model had no way to trade waiting against failing.
+ */
+function timeoutOf(args) {
+  const raw = Number(args?.timeoutMs)
+  if (!Number.isFinite(raw) || raw <= 0) return TIMEOUT_MS
+  return Math.min(Math.round(raw), MAX_TIMEOUT_MS)
+}
+
+function timeoutParam() {
+  return {
+    type: 'integer',
+    minimum: 1000,
+    maximum: MAX_TIMEOUT_MS,
+    description: `本次调用的超时毫秒数，默认 ${TIMEOUT_MS}，最大 ${MAX_TIMEOUT_MS}`,
+  }
+}
 
 /** Volatile config field edited by the settings page (lib/client.js). */
 const PATH_KEY = 'freecadPath'
@@ -275,7 +296,30 @@ function collect(stream, limit = 12000) {
   return () => text
 }
 
-async function runWorker(payload, exec, signal) {
+/**
+ * Where to put the request/result JSON.
+ *
+ * `os.tmpdir()` is not reliable here: on Windows the FreeCAD process can be
+ * denied write access to `%LOCALAPPDATA%\\Temp` (Defender's controlled folder
+ * access, roaming profiles, …) while it happily writes inside its own user
+ * home.  So when we know FreeCAD's user home, put the exchange next to it.
+ */
+function scratchDir(cmd) {
+  const env = portableEnv(cmd)
+  const home = env.FREECAD_USER_HOME || process.env.FREECAD_USER_HOME
+  if (home && path.isAbsolute(home)) {
+    const dir = path.join(path.dirname(home), 'rpc')
+    try {
+      fsSync.mkdirSync(dir, { recursive: true })
+      return dir
+    } catch {
+      // fall through to the OS temp dir
+    }
+  }
+  return os.tmpdir()
+}
+
+async function runWorker(payload, exec, signal, timeoutMs = TIMEOUT_MS) {
   const cmd = exec.cmd
   if (!isExecutableFile(cmd)) {
     throw new Error(
@@ -286,10 +330,27 @@ async function runWorker(payload, exec, signal) {
   if (!fsSync.existsSync(WORKER)) {
     throw new Error(`Plugin worker missing: ${WORKER}`)
   }
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-freecad-'))
+  const tmp = await fs.mkdtemp(path.join(scratchDir(cmd), 'dsh-freecad-'))
   const reqPath = path.join(tmp, 'request.json')
   const resPath = path.join(tmp, 'result.json')
+  const progressPath = path.join(tmp, 'progress.log')
   await fs.writeFile(reqPath, JSON.stringify(payload), 'utf8')
+  const startedAt = Date.now()
+  const readProgress = () => {
+    try {
+      return fsSync.readFileSync(progressPath, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .slice(-12)
+        .map((line) => {
+          const [fraction, ...rest] = line.split('\t')
+          const text = rest.join('\t')
+          return text || fraction
+        })
+    } catch {
+      return []
+    }
+  }
   try {
     const outcome = await new Promise((resolve, reject) => {
       const child = spawn(cmd, [WORKER], {
@@ -300,6 +361,7 @@ async function runWorker(payload, exec, signal) {
           ...portableEnv(cmd),
           FREECAD_PLUGIN_REQUEST: reqPath,
           FREECAD_PLUGIN_RESULT: resPath,
+          FREECAD_PLUGIN_PROGRESS: progressPath,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -310,8 +372,13 @@ async function runWorker(payload, exec, signal) {
         if (settled) return
         settled = true
         try { child.kill() } catch { /* ignore */ }
-        reject(new Error(`FreeCAD worker timed out after ${TIMEOUT_MS / 1000}s`))
-      }, TIMEOUT_MS)
+        const trail = readProgress()
+        const where = trail.length ? `\n进度：${trail.join(' → ')}` : ''
+        reject(new Error(
+          `FreeCAD worker timed out after ${Math.max(1, Math.round(timeoutMs / 1000))}s` +
+          `${where}\n可以调大 timeoutMs（最多 30 分钟），或把任务拆小。`,
+        ))
+      }, timeoutMs)
       const onAbort = () => {
         if (settled) return
         settled = true
@@ -358,6 +425,11 @@ async function runWorker(payload, exec, signal) {
       const detail = parsed.traceback || parsed.error || 'unknown FreeCAD error'
       throw new Error(`FreeCAD worker failed: ${parsed.error}\n${detail}`)
     }
+    const elapsedMs = Date.now() - startedAt
+    if (parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)) {
+      // Give the model a timeline it can reason about when something is slow.
+      parsed.data.timing = { elapsedMs, phases: readProgress() }
+    }
     return parsed.data
   } finally {
     try { await fs.rm(tmp, { recursive: true, force: true }) } catch { /* ignore */ }
@@ -401,6 +473,20 @@ const OPERATION_SCHEMA = {
     radius: { type: 'number', description: 'Fillet radius or chamfer distance (mm)' },
     distance: { type: 'number', description: 'Chamfer distance alias for radius (mm)' },
     edges: { type: 'array', items: { type: 'number' }, description: '1-based edge indices for fillet/chamfer' },
+    edgeAt: {
+      type: 'array',
+      items: { type: 'number' },
+      minItems: 3,
+      maxItems: 3,
+      description: '按位置选边：在该点附近选择一条边（推荐的稳健做法，边索引每次编辑后都会变）',
+    },
+    edgesNear: {
+      type: 'array',
+      items: { type: 'number' },
+      minItems: 3,
+      maxItems: 3,
+      description: '按位置选边：选择该点附近的全部边',
+    },
     diameter: { type: 'number', description: 'Hole diameter' },
     depth: { type: 'number', description: 'Blind hole depth from center/entry along +axis' },
     through: { type: 'boolean' },
@@ -427,8 +513,10 @@ function inspectTool(exec) {
       type: 'object',
       properties: {
         input: { type: 'string', description: 'STEP/STP 文件绝对路径（也支持 IGES/BREP）' },
-        detail: { type: 'boolean', description: '是否返回面和边的详细清单（最多 maxItems 条）' },
-        maxItems: { type: 'integer', minimum: 10, maximum: 2000, description: '明细最大条数，默认 200' },
+        detail: { type: 'boolean', description: '是否返回面和边的详细清单' },
+        maxItems: { type: 'integer', minimum: 10, maximum: 2000, description: '单次返回的最大条数，默认 200' },
+        offset: { type: 'integer', minimum: 0, description: '从第几条开始（1-based 索引），用于翻页，默认 0' },
+        limit: { type: 'integer', minimum: 1, maximum: 2000, description: '本页返回条数，默认等于 maxItems' },
       },
       required: ['input'],
     },
@@ -451,7 +539,8 @@ function inspectTool(exec) {
         if (holes.length > 12) lines.push(`  … 共 ${holes.length} 个孔`)
         const detail = value.detail || {}
         if (Array.isArray(detail.edges) && detail.edges.length) {
-          lines.push(`边索引（可用于倒圆角/倒角，1-based）:`)
+          const total = detail.edgesTotal ?? detail.edges.length
+          lines.push(`边索引（可用于倒圆角/倒角，1-based；共 ${total} 条）:`)
           for (const e of detail.edges.slice(0, 24)) {
             if (e.curve === 'Circle' && e.center) {
               const c = e.center.map((x) => Number(x).toFixed(1)).join(',')
@@ -463,11 +552,16 @@ function inspectTool(exec) {
             }
           }
           if (detail.edges.length > 24) {
-            lines.push(`  … 仅显示前 24 条，共 ${detail.edges.length} 条`)
+            lines.push(`  … 本页 ${detail.edges.length} 条，仅显示前 24 条`)
+          }
+          if (detail.nextEdgeOffset) {
+            lines.push(`  下一页：offset=${detail.nextEdgeOffset}`)
           }
         }
         if (Array.isArray(detail.faces) && detail.faces.length) {
-          lines.push(`面明细: ${detail.faces.length} 条${detail.facesTruncated ? '（已截断）' : ''}`)
+          const total = detail.facesTotal ?? detail.faces.length
+          lines.push(`面明细: ${detail.faces.length}/${total} 条${detail.facesTruncated ? '（已截断）' : ''}`)
+          if (detail.nextFaceOffset) lines.push(`  下一页：offset=${detail.nextFaceOffset}`)
         }
         return [{ type: 'text', text: lines.join('\n') }]
       },
@@ -481,7 +575,9 @@ function inspectTool(exec) {
         input: resolveWorkspacePath(args.input),
         detail: Boolean(args.detail),
         maxItems: args.maxItems,
-      }, exec)
+        offset: args.offset || 0,
+        limit: args.limit,
+      }, exec, undefined, timeoutOf(args))
     },
   }
 }
@@ -499,6 +595,7 @@ function editTool(exec) {
         operations: { type: 'array', items: OPERATION_SCHEMA, minItems: 1, description: '按顺序执行的编辑操作' },
         overwrite: { type: 'boolean', description: '允许输出路径与输入相同，默认 false' },
         saveFCStd: { type: 'boolean', description: '同时保存 FreeCAD FCStd 文件' },
+        timeoutMs: timeoutParam(),
       },
       required: ['input', 'operations'],
     },
@@ -531,7 +628,7 @@ function editTool(exec) {
         operations: args.operations,
         overwrite: Boolean(args.overwrite),
         saveFCStd: Boolean(args.saveFCStd),
-      }, exec)
+      }, exec, undefined, timeoutOf(args))
     },
   }
 }
@@ -556,6 +653,7 @@ function drawingTool(exec) {
         header: { type: 'string', description: '图纸左上角页眉，默认 FreeCAD 二维加工图' },
         material: { type: 'string', description: '材料，如 6061-T6' },
         drawingNo: { type: 'string', description: '图号' },
+        timeoutMs: timeoutParam(),
       },
       required: ['input'],
     },
@@ -593,7 +691,7 @@ function drawingTool(exec) {
           material: args.material,
           drawingNo: args.drawingNo,
         },
-      }, exec)
+      }, exec, undefined, timeoutOf(args))
     },
   }
 }
@@ -669,6 +767,99 @@ function settingsPath(config) {
   return undefined
 }
 
+const MEASURE_ITEM_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    kind: {
+      type: 'string',
+      enum: ['distance', 'angle', 'radius'],
+      description: '类型：distance 两点/面/边之间的距离，angle 两面或两直边夹角，radius 圆孔/圆柱直径',
+    },
+    a: {
+      type: 'object',
+      additionalProperties: true,
+      description: '被测对象 A：{"point":[x,y,z]} 或 {"face":3} 或 {"edge":12}（1-based）',
+    },
+    b: {
+      type: 'object',
+      additionalProperties: true,
+      description: '被测对象 B，格式同 a；kind=distance/angle 时必填',
+    },
+  },
+  required: ['kind'],
+}
+
+function measureTool(exec) {
+  return {
+    name: 'freecad_measure',
+    description:
+      '在不改动模型的前提下量尺寸：点到点/点到面/面到面/边到边的距离（返回最近点与 ΔX/ΔY/ΔZ）、两面或两直边夹角、圆柱面或圆边的直径。配合 freecad_inspect_step 的 face/edge 索引使用；坐标单位为 mm。量出来的就是可以标到图纸上的数字。',
+    parameters: {
+      type: 'object',
+      properties: {
+        input: { type: 'string', description: 'STEP/STP 文件绝对路径' },
+        items: {
+          type: 'array',
+          items: MEASURE_ITEM_SCHEMA,
+          minItems: 1,
+          description: '要量的项目列表',
+        },
+        timeoutMs: timeoutParam(),
+      },
+      required: ['input', 'items'],
+    },
+    output: {
+      schema: { ...OUTPUT_SCHEMA, properties: { count: { type: 'number' } } },
+      render: (_args, value) => {
+        const items = value.measurements || []
+        const okCount = value.resolved ?? items.filter((m) => !m.error).length
+        const lines = [
+          `📏 ${value.file?.name || value.input} — ${okCount}/${value.count ?? items.length} 项成功（单位 ${value.units || 'mm'}）`,
+        ]
+        for (const m of items) {
+          if (m.error) {
+            lines.push(`  #${m.index} ❌ ${m.kind}: ${m.error}`)
+            continue
+          }
+          const unit = m.unit || 'mm'
+          if (m.kind === 'angle') {
+            lines.push(`  #${m.index} 夹角 ${Number(m.value).toFixed(3)}°`)
+          } else if (m.kind === 'radius') {
+            const r = m.radius != null ? ` (R${Number(m.radius).toFixed(3)})` : ''
+            lines.push(`  #${m.index} 直径 Ø${Number(m.value).toFixed(3)}${r}`)
+          } else {
+            lines.push(`  #${m.index} 距离 ${Number(m.value).toFixed(3)} ${unit}`)
+            if (m.planeOffset != null) {
+              lines.push(`      两平面间距 ${Number(m.planeOffset).toFixed(3)} mm`)
+            }
+            if (m.delta) {
+              lines.push(`      ΔX=${Number(m.delta[0]).toFixed(3)} ΔY=${Number(m.delta[1]).toFixed(3)} ΔZ=${Number(m.delta[2]).toFixed(3)}`)
+            }
+          }
+        }
+        if (value.timing?.elapsedMs != null) {
+          lines.push(`  用时 ${(value.timing.elapsedMs / 1000).toFixed(1)}s`)
+        }
+        return [{ type: 'text', text: lines.join('\n') }]
+      },
+    },
+    timeoutMs: TIMEOUT_MS,
+    isConcurrencySafe: () => true,
+    async execute(args) {
+      if (!args?.input) throw new Error('freecad_measure needs an input path')
+      if (!Array.isArray(args.items) || args.items.length === 0) {
+        throw new Error('freecad_measure needs a non-empty items array')
+      }
+      return runWorker({
+        action: 'measure',
+        input: resolveWorkspacePath(args.input),
+        items: args.items,
+      }, exec, undefined, timeoutOf(args))
+    },
+  }
+}
+
 export async function apply(ctx, config = {}) {
   const saved = settingsPath(config)
   // The path is resolved per call so a value saved from the settings card takes
@@ -677,7 +868,13 @@ export async function apply(ctx, config = {}) {
     get cmd() { return resolveFreeCAD(saved, config).cmd },
     get source() { return resolveFreeCAD(saved, config).source },
   }
-  const tools = [inspectTool(exec), editTool(exec), drawingTool(exec), statusTool(exec)]
+  const tools = [
+    inspectTool(exec),
+    editTool(exec),
+    drawingTool(exec),
+    measureTool(exec),
+    statusTool(exec),
+  ]
   const summary = tools.map((tool) => ({
     name: tool.name,
     required: tool.parameters.required || [],
@@ -727,4 +924,7 @@ export const _internal = {
   KNOWN_FREECAD_DIRS,
   PATH_KEY,
   settingsPath,
+  timeoutOf,
+  TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
 }

@@ -690,6 +690,8 @@ def project_view(shape, view_name, hidden=True):
             entity["c"] = shift(entity["c"])
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
+    _report("投影完成: %s %s (%d 可见 / %d 隐藏)" % (
+        spec["zh"], view_name, len(visible), len(hidden_lines)))
     return {
         "name": view_name,
         "label": spec["zh"],
@@ -731,12 +733,327 @@ def hole_view_name(hole, available):
     return None
 
 
-def face_details(shape, max_items=100, include_faces=True, include_edges=True):
+def _progress_hook(message, fraction=None):
+    """Worker replaces this with a file writer so the host can report progress."""
+    return None
+
+
+def _report(message, fraction=None):
+    try:
+        _progress_hook(message, fraction)
+    except Exception:
+        pass
+
+
+def _selector_geometry(shape, selector, role):
+    """Turn a {point|face|edge} selector into FreeCAD geometry."""
+    if not isinstance(selector, dict):
+        raise ValueError("%s must be an object like {\"face\": 3} or {\"point\": [x,y,z]}" % role)
+    if "point" in selector:
+        p = selector["point"]
+        if not isinstance(p, (list, tuple)) or len(p) != 3:
+            raise ValueError("%s.point needs three numbers" % role)
+        return "point", FreeCAD.Vector(float(p[0]), float(p[1]), float(p[2]))
+    for key, collection in (("face", shape.Faces), ("edge", shape.Edges)):
+        if key in selector:
+            try:
+                index = int(selector[key])
+            except (TypeError, ValueError):
+                raise ValueError("%s.%s must be an integer" % (role, key))
+            if index < 1 or index > len(collection):
+                raise ValueError("%s.%s out of range 1..%d" % (role, key, len(collection)))
+            return key, collection[index - 1]
+    raise ValueError("%s needs one of point / face / edge" % role)
+
+
+def _shape_of(kind, geo):
+    if kind == "point":
+        return Part.Vertex(geo)
+    if kind == "face":
+        return geo
+    if kind == "edge":
+        return geo
+    raise ValueError("unsupported selector kind %r" % kind)
+
+
+def _distance_between(shape_of_a, shape_of_b):
+    result = shape_of_b.distToShape(shape_of_a)
+    distance = float(result[0])
+    points = result[1] or []
+    detail = {}
+    if points:
+        try:
+            pb, pa = points[0][0], points[0][1]
+            detail["closestOnB"] = vlist(pb)
+            detail["closestOnA"] = vlist(pa)
+        except Exception:
+            pass
+    return distance, detail
+
+
+def measure_items(shape, items):
+    """Answer distance / angle / radius questions without touching the model.
+
+    One bad item must not void the rest: an LLM that guessed a face index wrong
+    still needs the measurements that did resolve, plus the reason this one did
+    not -- otherwise it has to re-ask everything to make progress.
+    """
+    if not isinstance(items, list) or not items:
+        raise ValueError("items must be a non-empty list of measurements")
+    out = []
+    for n, item in enumerate(items, 1):
+        try:
+            out.append(_measure_one(shape, n, item))
+        except Exception as exc:
+            out.append({
+                "index": n,
+                "kind": str((item or {}).get("kind") or "distance"),
+                "error": str(exc),
+            })
+    ok = sum(1 for record in out if "error" not in record)
+    return {"count": len(out), "resolved": ok, "measurements": out}
+
+
+def _plane_offset(face_a, face_b):
+    """Signed plane-to-plane offset for two planar faces, else None."""
+    try:
+        if face_a.Surface.__class__.__name__ != "Plane":
+            return None
+        if face_b.Surface.__class__.__name__ != "Plane":
+            return None
+        na = normalized(face_a.Surface.Axis)
+        nb = normalized(face_b.Surface.Axis)
+        if abs(abs(dot(na, nb)) - 1.0) > 1e-6:
+            return None  # not parallel: an offset is meaningless
+        delta = face_b.Surface.Position - face_a.Surface.Position
+        return abs(dot(delta, na))
+    except Exception:
+        return None
+
+
+def _measure_one(shape, n, item):
+    if not isinstance(item, dict):
+        raise ValueError("measurement #%d must be an object" % n)
+    kind = str(item.get("kind") or item.get("type") or "distance").lower()
+    if kind in ("distance", "dist", "gap"):
+        kind = "distance"
+    elif kind in ("angle", "degrees"):
+        kind = "angle"
+    elif kind in ("radius", "diameter", "size"):
+        kind = "radius"
+    else:
+        raise ValueError("measurement #%d: unknown kind %r" % (n, kind))
+    record = {"index": n, "kind": kind}
+    if kind == "distance":
+        ka, ga = _selector_geometry(shape, item.get("a"), "a")
+        kb, gb = _selector_geometry(shape, item.get("b"), "b")
+        distance, detail = _distance_between(_shape_of(ka, ga), _shape_of(kb, gb))
+        record.update({"value": round(distance, 4), "unit": "mm", "a": ka, "b": kb})
+        if ka == "face" and kb == "face":
+            # Two coplanar/adjacent faces measure 0 mm, which is useless for the
+            # question an engineer actually asks ("how thick is this plate?").
+            # Report the plane-to-plane offset alongside it.
+            try:
+                offset = _plane_offset(ga, gb)
+                if offset is not None:
+                    record["planeOffset"] = round(offset, 4)
+            except Exception:
+                pass
+        pa = detail.get("closestOnA")
+        pb = detail.get("closestOnB")
+        if pa and pb:
+            record["closest"] = {"a": pa, "b": pb}
+            record["delta"] = [round(pa[i] - pb[i], 4) for i in range(3)]
+        return record
+    if kind == "angle":
+        ka, ga = _selector_geometry(shape, item.get("a"), "a")
+        kb, gb = _selector_geometry(shape, item.get("b"), "b")
+
+        def direction(kind_, geo):
+            if kind_ == "face":
+                _, nrm = _face_normal_sample(geo)
+                return normalized(nrm)
+            if kind_ == "edge":
+                curve = geo.Curve
+                if hasattr(curve, "Direction"):
+                    return normalized(curve.Direction)
+                raise ValueError("angle needs a straight edge or a face, not a %s edge"
+                                 % curve.__class__.__name__)
+            raise ValueError("angle does not accept a bare point")
+
+        na = direction(ka, ga)
+        nb = direction(kb, gb)
+        value = math.degrees(math.acos(max(-1.0, min(1.0, abs(dot(na, nb))))))
+        record.update({
+            "value": round(value, 4),
+            "unit": "deg",
+            "a": ka, "b": kb,
+            "normalA": vlist(na), "normalB": vlist(nb),
+        })
+        return record
+    target = item.get("a") or item.get("item")
+    kind_, geo = _selector_geometry(shape, target, "a")
+    if kind_ == "face":
+        surf = geo.Surface
+        name = surf.__class__.__name__
+        if name == "Cylinder":
+            record.update({
+                "value": round(float(surf.Radius) * 2.0, 4),
+                "unit": "mm",
+                "what": "diameter",
+                "radius": round(float(surf.Radius), 4),
+                "axis": vlist(normalized(surf.Axis)),
+                "axisCenter": vlist(surf.Center),
+            })
+        elif name == "Sphere":
+            record.update({
+                "value": round(float(surf.Radius) * 2.0, 4),
+                "unit": "mm",
+                "what": "diameter",
+                "radius": round(float(surf.Radius), 4),
+                "center": vlist(surf.Center),
+            })
+        else:
+            raise ValueError("radius needs a cylindrical or spherical face, got %s" % name)
+    elif kind_ == "edge":
+        curve = geo.Curve
+        name = curve.__class__.__name__
+        if name == "Circle":
+            record.update({
+                "value": round(float(curve.Radius) * 2.0, 4),
+                "unit": "mm",
+                "what": "diameter",
+                "radius": round(float(curve.Radius), 4),
+                "center": vlist(curve.Center),
+                "normal": vlist(normalized(curve.Axis)),
+                "length": round(float(geo.Length), 4),
+            })
+            try:
+                record["arcDegrees"] = round(
+                    math.degrees(float(geo.Length) / float(curve.Radius)), 3)
+            except Exception:
+                pass
+        else:
+            raise ValueError("radius needs a circular edge, got %s" % name)
+    else:
+        raise ValueError("radius does not accept a bare point")
+    return record
+
+
+def resolve_edges(shape, op, kind="edge"):
+    """Resolve 1-based indices or positional selectors into concrete edges.
+
+    Index lists are brittle after an earlier operation renumbers the B-Rep, so
+    callers may instead point at geometry: ``edgeAt`` picks the nearest edge and
+    ``edgesNear`` picks every edge within ``radius`` of a point.
+    """
+    edges = list(shape.Edges)
+    picked = []
+
+    def add(index):
+        if index not in picked:
+            picked.append(index)
+
+    raw = op.get("edges")
+    if raw not in (None, [], "all"):
+        try:
+            indices = [int(e) for e in raw]
+        except (TypeError, ValueError):
+            raise ValueError("%s edge indices must be integers" % kind)
+        bad = [e for e in indices if e < 1 or e > len(edges)]
+        if bad:
+            raise ValueError("%s edge index out of range 1..%d: %s"
+                             % (kind, len(edges), ", ".join(str(e) for e in bad)))
+        for index in indices:
+            add(index)
+
+    def edge_distance(edge, point):
+        try:
+            return float(edge.distToShape(Part.Vertex(point))[0])
+        except Exception:
+            return float((edge.CenterOfMass - point).Length)
+
+    iff = op.get("edgeAt")
+    if iff is not None:
+        if not isinstance(iff, (list, tuple)) or len(iff) != 3:
+            raise ValueError("edgeAt needs [x, y, z]")
+        point = vec(iff)
+        best = None
+        for index, edge in enumerate(edges, 1):
+            d = edge_distance(edge, point)
+            if best is None or d < best[1]:
+                best = (index, d)
+        if best is None:
+            raise ValueError("the shape has no edges to select")
+        add(best[0])
+
+    near = op.get("edgesNear")
+    if near is not None:
+        if not isinstance(near, (list, tuple)) or len(near) != 3:
+            raise ValueError("edgesNear needs [x, y, z]")
+        point = vec(near)
+        radius = float(op.get("edgesNearRadius") or op.get("searchRadius") or 0.5)
+        if radius <= 0:
+            raise ValueError("edgesNearRadius must be positive")
+        hits = 0
+        closest = None
+        for index, edge in enumerate(edges, 1):
+            d = edge_distance(edge, point)
+            if closest is None or d < closest[1]:
+                closest = (index, d)
+            if d <= radius:
+                add(index)
+                hits += 1
+        if not hits:
+            # A miss is almost always "the point is not on the edge", so say by
+            # how much instead of only that nothing matched.
+            hint = ""
+            if closest is not None:
+                hint = "；最近的边是 #%d，距离 %.3f mm" % (closest[0], closest[1])
+            raise ValueError(
+                "edgesNear [%.3f, %.3f, %.3f] 半径 %.3f mm 内没有任何边%s"
+                "。可以加大 edgesNearRadius，或用 edgeAt，或按编号给 edges"
+                % (point.x, point.y, point.z, radius, hint))
+
+    selected = []
+    for index in picked:
+        edge = edges[index - 1]
+        info = {"index": index, "length": round(float(edge.Length), 4)}
+        try:
+            info["start"] = vlist(edge.Vertexes[0].Point)
+            info["end"] = vlist(edge.Vertexes[-1].Point)
+        except Exception:
+            pass
+        try:
+            info["mid"] = vlist(edge.CenterOfMass)
+        except Exception:
+            pass
+        try:
+            info["curve"] = edge.Curve.__class__.__name__
+        except Exception:
+            pass
+        selected.append((index, edge, info))
+    return selected
+
+
+def face_details(shape, max_items=100, include_faces=True, include_edges=True,
+                 offset=0, limit=None):
+    """Face/edge inventory with real pagination.
+
+    ``offset``/``limit`` page through everything; ``max_items`` stays as the
+    hard ceiling for one response so a huge B-Rep cannot blow up the transcript.
+    """
     result = {}
+    page_size = int(limit if limit is not None else max_items)
+    page_size = max(1, min(page_size, int(max_items) if max_items else page_size))
+    start = max(0, int(offset or 0))
     if include_faces:
         faces = []
-        for idx, face in enumerate(shape.Faces, 1):
-            if len(faces) >= max_items:
+        all_faces = list(shape.Faces)
+        for idx, face in enumerate(all_faces, 1):
+            if idx <= start:
+                continue
+            if len(faces) >= page_size:
                 break
             try:
                 surf = face.Surface.__class__.__name__
@@ -767,11 +1084,16 @@ def face_details(shape, max_items=100, include_faces=True, include_edges=True):
                 pass
             faces.append(item)
         result["faces"] = faces
-        result["facesTruncated"] = len(shape.Faces) > len(faces)
+        result["facesTotal"] = len(all_faces)
+        result["facesTruncated"] = len(all_faces) > start + len(faces)
+        result["nextFaceOffset"] = start + len(faces) if result["facesTruncated"] else None
     if include_edges:
         edges = []
-        for idx, edge in enumerate(shape.Edges, 1):
-            if len(edges) >= max_items:
+        all_edges = list(shape.Edges)
+        for idx, edge in enumerate(all_edges, 1):
+            if idx <= start:
+                continue
+            if len(edges) >= page_size:
                 break
             try:
                 curve = edge.Curve.__class__.__name__
@@ -789,6 +1111,10 @@ def face_details(shape, max_items=100, include_faces=True, include_edges=True):
             except Exception:
                 pass
             try:
+                item["mid"] = vlist(edge.CenterOfMass)
+            except Exception:
+                pass
+            try:
                 if curve == "Circle":
                     c = edge.Curve
                     item["center"] = vlist(c.Center)
@@ -798,5 +1124,9 @@ def face_details(shape, max_items=100, include_faces=True, include_edges=True):
                 pass
             edges.append(item)
         result["edges"] = edges
-        result["edgesTruncated"] = len(shape.Edges) > len(edges)
+        result["edgesTotal"] = len(all_edges)
+        result["edgesTruncated"] = len(all_edges) > start + len(edges)
+        result["nextEdgeOffset"] = start + len(edges) if result["edgesTruncated"] else None
+    result["offset"] = start
+    result["limit"] = page_size
     return result

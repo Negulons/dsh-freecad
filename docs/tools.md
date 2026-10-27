@@ -22,7 +22,9 @@
 |---|---|---|---|
 | `input` | string | ✅ | STEP/STP（也接受 `.stpz`、IGES、BREP）绝对路径 |
 | `detail` | boolean | | 是否返回面/边明细 |
-| `maxItems` | integer | | 明细条数上限，10–2000，默认 200 |
+| `maxItems` | integer | | 单次返回条数上限，10–2000，默认 200 |
+| `offset` | integer | | 从第几条开始翻页（0 = 从头），默认 0 |
+| `limit` | integer | | 本页条数，默认等于 `maxItems` |
 
 支持的扩展名：`.step` `.stp` `.stpz` `.iges` `.igs` `.brep` `.brp`（大小写不敏感）。
 
@@ -45,6 +47,7 @@
 
 - `holes` 最多 200 条，按“轴线 Z→Y→X、坐标、直径”排序，编号 `H1..Hn`。
 - `detail.edges[i].index` 是 **1-based**，可直接用于 fillet/chamfer 的 `edges`。
+- 明细很大时用 `offset`/`limit` 翻页：返回里带 `edgesTotal` / `facesTotal` 与 `nextEdgeOffset` / `nextFaceOffset`，按提示翻即可读全；每条边还带 `mid`（中点），方便和 `edgesNear` 配合。
 - 多对象文件会追加一条 `warnings`，提示“尺寸与图纸使用合并后的形状”。
 
 ---
@@ -79,6 +82,17 @@
 - `box`：`size:[X,Y,Z]` + `position`
 - `cylinder`：`radius` + `height` + `position` + `axis`
 - `sphere`：`radius` + `position`
+
+### 按位置选边（推荐）
+
+边索引在每次编辑后都会重排（第一个操作砍掉两条边，后面所有编号就都变了），所以倒圆角/倒角除了 `edges`，还可以按位置选：
+
+| 参数 | 说明 |
+|---|---|
+| `edgeAt` | `[x,y,z]`，选**离该点最近的一条边** |
+| `edgesNear` | `[x,y,z]`，选该点附近的**所有**边（默认半径 0.5 mm，可用 `edgesNearRadius` 调整） |
+
+返回的 `operations[i].edges` 会回显实际命中的边（编号、长度、起止点、中点），可以据此确认选对了没有。点不在任何边附近时，错误信息会给出“最近的边 #n，距离 x mm”，据此改点或加大半径。
 
 ### 安全与校验
 
@@ -122,11 +136,47 @@ HLR 投影 → 第一角法二维加工图。
 
 ---
 
+## freecad_measure
+
+在**不改动文件**的前提下量尺寸：点/面/边之间的距离、两面或两直边夹角、圆柱面或圆边的直径。量出来的数字可以直接写进图纸标注。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `input` | string | ✅ | STEP/STP 绝对路径 |
+| `items` | array | ✅ | 测量项列表，见下 |
+| `timeoutMs` | integer | | 本次调用超时，默认 300000，最大 1800000 |
+
+每个测量项：
+
+```json
+{ "kind": "distance|angle|radius",
+  "a": { "point": [x,y,z] } | { "face": 3 } | { "edge": 12 },
+  "b": { ... }   // distance/angle 必填
+}
+```
+
+返回（节选）：
+
+```json
+{ "count": 2, "resolved": 2, "units": "mm",
+  "measurements": [
+    { "index": 1, "kind": "distance", "value": 12.0, "unit": "mm",
+      "a": "face", "b": "face", "planeOffset": 12.0,
+      "closest": { "a": [...], "b": [...] }, "delta": [0, 0, 12] },
+    { "index": 2, "kind": "radius", "value": 25.0, "radius": 12.5, "what": "diameter" }
+  ] }
+```
+
+- 两个平面互相贴合时 `distance` 会是 0，此时看 **`planeOffset`**（两平面间距），板厚就是这么量的。
+- 单个测量项出错**不会**毁掉整批：该项返回 `{"index": n, "error": "..."}`，`resolved` 告诉你有几项成功。
+- 直径：`{"face": 圆柱面索引}` 或 `{"edge": 圆边索引}`。
+
 ## 通用行为
 
 | 项 | 值 |
 |---|---|
-| 超时 | 重工具 300 s；`freecad_status` 30 s |
+| 超时 | 默认 300 s，每次调用可用 `timeoutMs` 调到最大 1800 s；`freecad_status` 30 s |
+| 进度 | worker 把阶段写进进度文件；返回里的 `timing.elapsedMs` / `timing.phases` 给出耗时与阶段，超时错误会带上最后几个阶段 |
 | 并发安全 | 重工具 `false`，否则可能同时启动多个 FreeCAD |
 | 卡片类型 | `edit`/`drawing` 声明 `presentCall`（kind: write），便于 UI 显示写操作 |
 | 渲染摘要 | 每个工具 `output.render` 返回一段中文摘要文本给模型，不直接展示 JSON |

@@ -34,6 +34,9 @@ jobs:
       - name: Self test (reports missing FreeCAD, must not crash)
         run: node index.js --self-test > /dev/null
 
+      - name: Host unit tests (timeouts, tool registry)
+        run: node tests/test_host.mjs
+
       - name: Renderer unit tests (no FreeCAD needed)
         run: python3 tests/test_renderer.py
 

@@ -34,6 +34,41 @@ def _obj_from_request(req):
     return os.path.abspath(os.path.expanduser(path))
 
 
+def _setup_progress():
+    """Stream coarse phases to a file the host can tail while the job runs."""
+    target = os.environ.get("FREECAD_PLUGIN_PROGRESS")
+    if not target:
+        return
+
+    def hook(message, fraction=None):
+        try:
+            with open(target, "a", encoding="utf-8") as fh:
+                fh.write("%s\t%s\n" % (
+                    "" if fraction is None else "%.3f" % float(fraction),
+                    str(message).replace("\n", " ")))
+                fh.flush()
+        except OSError:
+            pass
+
+    C._progress_hook = hook
+
+
+def do_measure(req):
+    path, doc, entries, shape = _shape_doc(req)
+    try:
+        items = req.get("items") or req.get("measurements") or []
+        result = C.measure_items(shape, items)
+        result["input"] = path
+        result["file"] = C.file_info(path)
+        result["units"] = "mm"
+        if len(entries) > 1:
+            result["note"] = ("The file holds %d objects; measurements use their combined shape."
+                              % len(entries))
+        return result
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+
+
 def _shape_doc(req):
     path = _obj_from_request(req)
     doc, entries, shape = C.import_cad(path)
@@ -73,7 +108,12 @@ def do_inspect(req):
                 "The file contains %d objects; measurements and drawings use their combined shape." % len(entries)
             )
         if detail:
-            result["detail"] = C.face_details(shape, max_items=int(req.get("maxItems") or 200))
+            result["detail"] = C.face_details(
+                shape,
+                max_items=int(req.get("maxItems") or 200),
+                offset=int(req.get("offset") or 0),
+                limit=req.get("limit"),
+            )
         return result
     finally:
         FreeCAD.closeDocument(doc.Name)
@@ -156,6 +196,7 @@ def _edit_shape(shape, operations):
             raise ValueError("operation #%d must be an object" % index)
         kind = str(op.get("type") or "").lower()
         before = C.shape_stats(shape)
+        resolved_edges = None
         if kind in ("translate", "move", "rotate", "rotation", "scale", "mirror"):
             shape = _transform_shape(shape, op)
         elif kind in ("fillet", "chamfer"):
@@ -163,24 +204,17 @@ def _edit_shape(shape, operations):
             radius = float(op.get("radius") or op.get("distance") or 0.0)
             if radius <= 0:
                 raise ValueError("%s radius must be positive" % kind)
-            raw_edges = op.get("edges")
-            if raw_edges in (None, [], "all"):
-                raise ValueError("%s requires an explicit list of 1-based edge indices" % kind)
-            try:
-                indices = [int(e) for e in raw_edges]
-            except (TypeError, ValueError):
-                raise ValueError("%s edge indices must be integers" % kind)
-            bad = [e for e in indices if e < 1 or e > len(shape.Edges)]
-            if bad:
+            resolved = C.resolve_edges(shape, op, kind)
+            if not resolved:
                 raise ValueError(
-                    "%s edge index out of range 1..%d: %s"
-                    % (kind, len(shape.Edges), ", ".join(str(e) for e in bad))
-                )
-            edges = [shape.Edges[e - 1] for e in indices]
+                    "%s needs edges (1-based indices), edgeAt [x,y,z] or edgesNear [x,y,z]"
+                    % kind)
+            edges = [edge for _, edge, _ in resolved]
             if kind == "fillet":
                 shape = shape.makeFillet(radius, edges)
             else:
                 shape = shape.makeChamfer(radius, edges)
+            resolved_edges = [info for _, _, info in resolved]
         elif kind in ("hole", "drill"):
             shape = _hole_cut(shape, op)
         elif kind in ("primitive", "boolean"):
@@ -190,13 +224,18 @@ def _edit_shape(shape, operations):
         if shape is None or shape.isNull():
             raise RuntimeError("operation #%d (%s) produced a null shape" % (index, kind))
         after = C.shape_stats(shape)
-        log.append({
+        entry = {
             "index": index,
             "type": kind,
             "volumeBefore": before["volume"] if before else None,
             "volumeAfter": after["volume"] if after else None,
             "valid": after["valid"] if after else None,
-        })
+        }
+        if resolved_edges:
+            # Echo what the selector actually hit: indices shift after every
+            # operation, so the caller must be able to confirm the choice.
+            entry["edges"] = resolved_edges
+        log.append(entry)
         shape = shape.removeSplitter()
     return shape, log
 
@@ -370,7 +409,10 @@ def dispatch(req):
         return do_edit(req)
     if action in ("drawing", "draw", "2d"):
         return do_drawing(req)
-    raise ValueError("Unknown action %r; expected inspect, edit or drawing" % action)
+    if action in ("measure", "measurement", "distance"):
+        return do_measure(req)
+    raise ValueError(
+        "Unknown action %r; expected inspect, edit, drawing or measure" % action)
 
 
 def _json_safe(value):
@@ -400,10 +442,14 @@ def main():
         print("FREECAD_PLUGIN_REQUEST and FREECAD_PLUGIN_RESULT must be set", file=sys.stderr)
         return 2
     result = {"ok": False, "error": "worker did not run"}
+    _setup_progress()
+    C._report("worker 启动")
     try:
         with open(req_path, "r", encoding="utf-8-sig") as fh:
             req = json.load(fh)
+        C._report("开算: %s" % str(req.get("action") or "inspect"))
         result = {"ok": True, "data": dispatch(req)}
+        C._report("完成")
     except Exception as exc:
         result = {
             "ok": False,
