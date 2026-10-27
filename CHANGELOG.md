@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.2.5 — lead with the plugins page
+
+### Changed
+
+- Install instructions now lead with "open the DSH **Plugins** page and search `dsh-freecad`", which was
+  verified end-to-end on a clean instance. The manual npm/`install.mjs` and from-source paths moved down
+  and stay documented, including the top-level-vs-`insert` pitfall of `cordis.patch.yml`.
+
 ## 0.2.4 — portable FreeCAD actually starts
 
 ### Fixed

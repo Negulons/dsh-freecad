@@ -38,39 +38,33 @@
 
 插件是普通 DSH bundle，装进某个 profile 后**必须重启 DSH** 才会挂载。
 
-### 方式 A：从本仓库安装（推荐）
+### 方式 A：在 DSH 插件页安装（推荐，已实测）
+
+打开 DSH 的 **插件** 页，输入 `dsh-freecad` 搜索并安装，然后重启 DSH。插件页会自己写好 profile 的依赖、`dsh.profile.bundles` 与 `cordis.patch.yml` 条目，不需要手工改任何文件。
+
+> 这条路径已在干净的 DSH 实例上验证通过。若重启后「设置 → FreeCAD」没出现，再重启一次（浏览器半侧 bundle 只在启动时注册）。
+
+### 方式 B：npm + 安装脚本
+
+```bash
+npm i dsh-freecad     # 或 pnpm add dsh-freecad
+node node_modules/dsh-freecad/scripts/install.mjs
+```
+
+`install.mjs` 会：把包装进 `<profile>/plugins/dsh-freecad`；在 `package.json` 里写入 `file:` 依赖并加进 `dsh.profile.bundles`；在 `cordis.patch.yml` 追加一条**顶层**的 `id: freecad` 行；执行 `pnpm install`（没有 pnpm 时退化为直接复制到 `node_modules`）。**被改动的文件都会先备份为 `*.bak-<时间戳>`。**
+
+### 方式 C：从源码安装（开发用）
 
 ```bash
 git clone <this-repo> dsh-freecad
 cd dsh-freecad
-node scripts/install.mjs                       # 默认装进 ~/.dsh/profiles/desktop
-node scripts/install.mjs --profile "C:\Users\me\.dsh\profiles\other"
+node scripts/install.mjs                        # 默认装进 ~/.dsh/profiles/desktop
+node scripts/install.mjs --profile "C:/Users/me/.dsh/profiles/other"
 ```
 
-脚本会：把包复制到 `<profile>/plugins/dsh-freecad`；在 `package.json` 里写入 `file:` 依赖并加进 `dsh.profile.bundles`；在 `cordis.patch.yml` 追加一条**顶层**的 `id: freecad` 行；执行 `pnpm install`（没有 pnpm 时退化为直接复制到 `node_modules`）。**被改动的文件都会先备份为 `*.bak-<时间戳>`。**
+改完源码重跑这条命令即可覆盖安装（同样先备份）。
 
-> 那条配置必须写在**顶层**，不能包进 `- insert:` 块。DSH 的设置编辑器只会给「顶层、且没有 `insert` 键」的条目写 `config`；写进 insert 块的条目在设置页点保存会一直报「没有保存成功」（服务端返回 `settings/rejected`）。安装脚本已按顶层写。
-
-### 方式 B：作为本地路径依赖
-
-```jsonc
-// <profile>/package.json
-{
-  "dependencies": { "dsh-freecad": "file:./plugins/dsh-freecad" },
-  "dsh": { "profile": { "bundles": [ /* … */, "dsh-freecad" ] } }
-}
-```
-
-### 方式 C：npm（已发布）
-
-<https://www.npmjs.com/package/dsh-freecad>
-
-```bash
-cd ~/.dsh/profiles/desktop
-pnpm add dsh-freecad
-# 然后把 "dsh-freecad" 加进 package.json 的 dsh.profile.bundles，
-# 并在 cordis.patch.yml 里加一条顶层的 id: freecad 行（同方式 B 第 2 步）
-```
+> 手工编辑时注意：那条配置必须写在**顶层**，不能包进 `- insert:` 块。DSH 的设置编辑器只会给「顶层、且没有 `insert` 键」的条目写 `config`；写进 insert 块的条目在设置页点保存会一直报「没有保存成功」（服务端返回 `settings/rejected`）。插件页与安装脚本都按顶层写。
 
 ### 装完之后
 

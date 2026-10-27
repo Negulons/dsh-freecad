@@ -46,44 +46,38 @@ are untested — reports welcome.
 
 The plugin is an ordinary DSH bundle. It is mounted at startup, so **restart DSH after installing**.
 
-### A. From this repository (recommended)
+### A. From the DSH plugins page (recommended, verified)
+
+Open **Plugins** in DSH, search for `dsh-freecad`, install, then restart DSH. The page wires the
+profile dependency, `dsh.profile.bundles` and the `cordis.patch.yml` entry for you — no files to edit.
+
+> Verified on a clean DSH instance. If **Settings → FreeCAD** is missing afterwards, restart once more:
+> the browser half of the bundle is only registered at startup.
+
+### B. npm plus the install script
+
+```bash
+npm i dsh-freecad     # or pnpm add dsh-freecad
+node node_modules/dsh-freecad/scripts/install.mjs
+```
+
+The script copies the package into `<profile>/plugins/dsh-freecad`, adds the `file:` dependency and
+`dsh.profile.bundles` entry, appends a **top-level** `id: freecad` row to `cordis.patch.yml`, then runs
+`pnpm install`. Every touched file is first backed up as `*.bak-<timestamp>`.
+
+### C. From source (development)
 
 ```bash
 git clone <this-repo> dsh-freecad
 cd dsh-freecad
-node scripts/install.mjs                       # ~/.dsh/profiles/desktop by default
-node scripts/install.mjs --profile "C:\Users\me\.dsh\profiles\other"
+node scripts/install.mjs
 ```
 
-The installer copies the package to `<profile>/plugins/dsh-freecad`, records a `file:` dependency in
-`package.json`, appends the package to `dsh.profile.bundles`, adds a **top-level** `id: freecad` row to
-`cordis.patch.yml`, and runs `pnpm install` (falling back to a plain copy when pnpm is missing).
-**Every modified file is backed up as `*.bak-<timestamp>` first.**
+Re-run after changing source to reinstall (backups included).
 
-> That row must stay top-level — do not wrap it in an `- insert:` block. The DSH settings editor only
-> writes `config` into top-level entries that have no `insert` key; an inserted entry rejects every save
-> from Settings with `settings/rejected`. The installer already writes it top-level.
-
-### B. As a local path dependency
-
-```jsonc
-// <profile>/package.json
-{
-  "dependencies": { "dsh-freecad": "file:./plugins/dsh-freecad" },
-  "dsh": { "profile": { "bundles": [ /* … */, "dsh-freecad" ] } }
-}
-```
-
-### C. From npm (published)
-
-<https://www.npmjs.com/package/dsh-freecad>
-
-```bash
-cd ~/.dsh/profiles/desktop
-pnpm add dsh-freecad
-# then add "dsh-freecad" to dsh.profile.bundles in package.json
-# and add one top-level `id: freecad` row in cordis.patch.yml (step 2 of option B)
-```
+> Hand editing: keep that row **top-level**, never inside a `- insert:` block. The DSH settings editor
+> only writes `config` for top-level rows without an `insert` key; an entry inside an insert block fails
+> every save with `settings/rejected`. Both the plugins page and the install script write it top-level.
 
 ### After installing
 
