@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.4.2 — 打包脚本跨平台
+
+### Fixed
+
+- `scripts/package.mjs` 不再调用 Windows PowerShell 的 `Compress-Archive`，改用项目自带的
+  ZIP 写入器 `scripts/zip.mjs`（Node 内置 `zlib` + 手写 CRC32/中央目录，零依赖）。
+  之前打包只能在 Windows 上跑，`ci` 在 ubuntu-latest 上必然在这一步失败。
+- 同一份源码现在在各平台产出一致的归档：固定时间戳、条目名统一正斜杠、
+  修掉 Windows 下 `scripts/install.mjs` 因路径分隔符不同而重复入包的问题。
+
+无运行时行为变化（只影响构建）。
+
 ## 0.4.1 — 改走 OIDC 发布
 
 ### Changed

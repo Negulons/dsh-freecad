@@ -18,7 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
+import { createZip } from './zip.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
@@ -54,6 +54,10 @@ for (const entry of pkg.files ?? []) wanted.push(entry)
 wanted.push('scripts/install.mjs')
 wanted.push('INSTALL-FOR-AI.md')
 
+// Normalize to forward slashes: `collect()` joins with path.sep on Windows, so
+// without this the same file can enter the set twice ('scripts/install.mjs'
+// from package.json files and 'scripts\install.mjs' from the directory walk).
+const norm = (rel) => rel.split(path.sep).join('/')
 const files = new Set()
 for (const entry of wanted) {
   const abs = path.join(root, entry)
@@ -62,12 +66,12 @@ for (const entry of wanted) {
     continue
   }
   if (fs.statSync(abs).isDirectory()) {
-    for (const rel of collect(entry)) files.add(rel)
+    for (const rel of collect(entry)) files.add(norm(rel))
   } else {
-    files.add(entry)
+    files.add(norm(entry))
   }
 }
-for (const rel of collect('docs')) files.add(rel)
+for (const rel of collect('docs')) files.add(norm(rel))
 files.add('package.json')
 
 // stage the tree
@@ -90,13 +94,16 @@ for (const must of ['index.js', 'package.json', 'cordis.patch.yml', 'dsh/fc_work
 }
 
 // zip it: the archive root is the `dsh-freecad/` folder itself, so unpacking
-// gives a ready-to-copy plugin directory instead of a staging wrapper
+// gives a ready-to-copy plugin directory instead of a staging wrapper.
+// Written in-process (scripts/zip.mjs) instead of shelling out to PowerShell's
+// Compress-Archive, which made packaging Windows-only and broke `ci` on Linux.
 fs.mkdirSync(outDir, { recursive: true })
 const zipPath = path.join(outDir, `${baseName}.zip`)
 fs.rmSync(zipPath, { force: true })
-execFileSync('powershell', ['-NoProfile', '-Command',
-  `Compress-Archive -Path '${stage}' -DestinationPath '${zipPath}' -Force`],
-  { stdio: 'inherit' })
+fs.writeFileSync(zipPath, createZip([...files].sort().map((rel) => ({
+  path: `dsh-freecad/${rel.replaceAll(path.sep, '/')}`,
+  data: fs.readFileSync(path.join(stage, rel)),
+}))))
 
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')

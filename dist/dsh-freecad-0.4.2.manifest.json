@@ -1,12 +1,12 @@
 {
   "name": "dsh-freecad",
-  "version": "0.4.0",
-  "builtAt": "2026-10-27T13:53:45.297Z",
+  "version": "0.4.2",
+  "builtAt": "2026-10-27T14:21:51.148Z",
   "files": [
     {
       "path": "CHANGELOG.md",
-      "bytes": 8140,
-      "sha256": "0340c6ef006e865564f470e2919b032724184f624844300efbbc7658a40df8d6"
+      "bytes": 9167,
+      "sha256": "bdfd2f9ded93436ab1d3cfec9f7959fc3b388d1fc763d4e174e9e1da43de5f38"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -49,67 +49,67 @@
       "sha256": "d9df42f5178540dca31a6493a37b77efa22e626310f643f77d1e3c72876dd3d6"
     },
     {
-      "path": "docs\\architecture.md",
+      "path": "docs/architecture.md",
       "bytes": 10698,
       "sha256": "a2e54e4c78a91c9f7803cfb7b1070c665fd2860b8b5d3b7641447bcedd3d9271"
     },
     {
-      "path": "docs\\development.md",
-      "bytes": 7563,
-      "sha256": "8aafb982a52c32978672617ea5414a27da297b87bfeba0e30e6540b36faf9e04"
+      "path": "docs/development.md",
+      "bytes": 8787,
+      "sha256": "8143ac067692184089a608945fa2a8a7b3f83bc5f3c69bbcf2fde46ecebdb959"
     },
     {
-      "path": "docs\\drawing-engine.md",
+      "path": "docs/drawing-engine.md",
       "bytes": 9367,
       "sha256": "8c889f2fe70a5825c47533d6179b1de44fef9ef3f6d9013adc41e6e6f02b5581"
     },
     {
-      "path": "docs\\images\\demo-bracket-drawing.png",
+      "path": "docs/images/demo-bracket-drawing.png",
       "bytes": 209189,
       "sha256": "a0e5cd93afe9e1b6a9bb58eb0a76aa6d638d1f9f176d5fd1e298b0edc93d69ed"
     },
     {
-      "path": "docs\\images\\settings-freecad.png",
+      "path": "docs/images/settings-freecad.png",
       "bytes": 83100,
       "sha256": "8aca1ecd3fe4f5669d8b04a614a9d6e777fc2eaef587395c48b7402378e64514"
     },
     {
-      "path": "docs\\limitations.md",
+      "path": "docs/limitations.md",
       "bytes": 5864,
       "sha256": "526d90201d6b027eb8ff005ba5cc63e711a593f0093be6d3452bdecd5c30666a"
     },
     {
-      "path": "docs\\tools.md",
+      "path": "docs/tools.md",
       "bytes": 10215,
       "sha256": "dbbf3a90aba0562ab333db13e249a8670445f8be2b427ee46d25ae20bc5df277"
     },
     {
-      "path": "docs\\troubleshooting.md",
+      "path": "docs/troubleshooting.md",
       "bytes": 14007,
       "sha256": "c946b40202cc7eec3ddb9773882d56aedeffdaadefd1d9556748893b65f993e6"
     },
     {
-      "path": "dsh\\fc_common.py",
+      "path": "dsh/fc_common.py",
       "bytes": 46686,
       "sha256": "f8699c746c5d61acc8f3214f210c248f61230cc1c07e57fde705897a9a063d7d"
     },
     {
-      "path": "dsh\\fc_render.py",
+      "path": "dsh/fc_render.py",
       "bytes": 39316,
       "sha256": "14ce86d6be880b24d581bd35d6d2494408f4e39e3fb6ece8bf06af97f9900337"
     },
     {
-      "path": "dsh\\fc_worker.py",
+      "path": "dsh/fc_worker.py",
       "bytes": 18213,
       "sha256": "8153b2f16d4bbf5f82716721c40488f60c4dec63f591f0b466200539f33ab2c9"
     },
     {
-      "path": "examples\\demo_bracket.FCStd",
+      "path": "examples/demo_bracket.FCStd",
       "bytes": 3257,
       "sha256": "8019711773d39ed614197fe35ba0dde3b31c9afa8c5e394ec870206dcc4e12f9"
     },
     {
-      "path": "examples\\demo_bracket.step",
+      "path": "examples/demo_bracket.step",
       "bytes": 15954,
       "sha256": "dc459730ed657cc63ca2d2e41d4aa5fbfa979343a787371bd1273cdfeddba05e"
     },
@@ -119,14 +119,14 @@
       "sha256": "f928f0ab0c919c45e1ae0f734b39b988bbbdf3c7daa7dc5d5c5cc1ae597180c7"
     },
     {
-      "path": "lib\\client.js",
+      "path": "lib/client.js",
       "bytes": 12588,
       "sha256": "2cac8b7ad1a401cc1b1fea2d84bebb47fedba287a27c3a8d36b92229d64f53ab"
     },
     {
       "path": "package.json",
       "bytes": 1544,
-      "sha256": "13e6c8a0673e270eec0e6a4bfd3b18b801ce8f7e6ebe9360edc5e30d248b2fe4"
+      "sha256": "71c0522bd6eb3e68b3c6305823db5dfb785a86d6b9acc0651eebb0ebc1c045c4"
     },
     {
       "path": "scripts/install.mjs",
@@ -134,44 +134,44 @@
       "sha256": "139c1b34eeb15c1d9fb24393ec09d166425ac842336dd11b2c06a0ff87e3bf79"
     },
     {
-      "path": "scripts\\install.mjs",
-      "bytes": 9609,
-      "sha256": "139c1b34eeb15c1d9fb24393ec09d166425ac842336dd11b2c06a0ff87e3bf79"
+      "path": "scripts/package.mjs",
+      "bytes": 5314,
+      "sha256": "d0b272de8158b5d5806252c1976f225a7e5f0c1c45a1b2ec73877ffd98bd76c9"
     },
     {
-      "path": "scripts\\package.mjs",
-      "bytes": 4704,
-      "sha256": "20ae258dd04d2d8db10fd563c24d5f7ecb953bf95958ecccb854a0b1c2eb39b9"
+      "path": "scripts/zip.mjs",
+      "bytes": 3462,
+      "sha256": "1a515ea8e5e6b5f002b4d152485d65fe17356a057f02e15d47e85742cb5ea6f3"
     },
     {
-      "path": "tests\\call_timeout.mjs",
+      "path": "tests/call_timeout.mjs",
       "bytes": 858,
       "sha256": "834ab632d562095fb77fa666b37fab43063e76c11bdb0a8fabdb246a4e3221ae"
     },
     {
-      "path": "tests\\call_tool.mjs",
+      "path": "tests/call_tool.mjs",
       "bytes": 2124,
       "sha256": "8182e8db1b96de7a7f9f2b68170a662af01f94605a2cdbdc765c72048b57d34f"
     },
     {
-      "path": "tests\\test_holes.py",
+      "path": "tests/test_holes.py",
       "bytes": 3641,
       "sha256": "f95804a11e13d6257d0e00217887c377fd906acbb3346a5a585c87ad0c506d95"
     },
     {
-      "path": "tests\\test_host.mjs",
+      "path": "tests/test_host.mjs",
       "bytes": 1573,
       "sha256": "b70c1cc12c794eaaaab4c4272631dfc8c38183ff7515471e27cc60656c303257"
     },
     {
-      "path": "tests\\test_renderer.py",
+      "path": "tests/test_renderer.py",
       "bytes": 5887,
       "sha256": "66e34267dcd8b1514d8cabe08669a908e90009c0e39ecb2fa6e878f833588b03"
     }
   ],
   "zip": {
-    "path": "D:\\DSH\\DSH-CAD\\pkg\\dsh-freecad\\dist\\dsh-freecad-0.4.0.zip",
-    "bytes": 391508,
-    "sha256": "c700d95e2fc62aa32d99bb6ec70b4954b914336586f13ff25d40af30f18eb6f1"
+    "path": "D:\\DSH\\DSH-CAD\\pkg\\dsh-freecad\\dist\\dsh-freecad-0.4.2.zip",
+    "bytes": 404604,
+    "sha256": "0e1634a6096578e2728b28f735a29a6ad671998bece7ca09c59c35f8fb789e1e"
   }
 }
