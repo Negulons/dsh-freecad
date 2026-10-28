@@ -1,6 +1,6 @@
 # dsh-freecad bundle layer.
-# Mounts index.js through the package root export and registers the four
-# FreeCAD tools: inspect / edit / drawing / status.
+# Mounts index.js through the package root export and registers the five
+# FreeCAD tools: inspect / measure / edit / drawing / status.
 - insert:
     - id: freecad
       name: 'dsh-freecad'
