@@ -26,7 +26,7 @@ DSH Desktop (Node)
 
 - **不共享 Python 环境**。FreeCAD 的解释器里有 `FreeCAD`/`Part`/`TechDraw`/`Import`/`matplotlib`/`PIL`，但没有 DSH 的 Node 环境；两侧只通过 JSON 文件通信，所以宿主不需要匹配版本的 Python。
 - **每次调用新起一个进程**。无常驻服务、无状态残留；调用结束后临时目录被删。
-- **重工具互斥**。`inspect`/`edit`/`drawing` 的 `isConcurrencySafe: () => false`，`freecad_status` 为 `true`。
+- **重工具互斥**。`inspect`/`edit`/`drawing` 的 `isConcurrencySafe: () => false`；只读的 `freecad_measure` 与 `freecad_status` 为 `true`。
 
 ## 2. 两个半侧
 
@@ -90,7 +90,7 @@ DSH 的 lossless-JSON 守卫会拒绝负零与 NaN——这是真实踩过的坑
 
 - 每次任务 `FreeCAD.newDocument("FCImport")` → `Import.insert()` → 读取 → `finally: FreeCAD.closeDocument()`；异常路径也关闭。
 - 编辑导出时新建 `FCEdit` 文档放结果 shape，`Import.export()` 后立即关闭。
-- 多对象 STEP：所有对象按 `getGlobalPlacement()` 烘焙到世界坐标后 `makeCompound()` 成一个 shape 参与测量与出图，并在 `warnings` 里提示。
+- 多对象 STEP：只取几何对象（`Part::Feature` 派生，且不被其他 Part 特征引用）；`App::Part` 容器和 `App::Origin` 的轴/基准面/原点跳过，无限大的形状也跳过。每个对象的 `Shape` 已带自身 Placement，只再叠加父级 Placement（`getGlobalPlacement() × own⁻¹`），然后 `makeCompound()` 成一个 shape 参与测量与出图，并在 `warnings` 里提示。
 
 ## 7. 关键设计决策
 
@@ -185,15 +185,16 @@ host 半侧只认一个字段，声明为 **volatile**（保存即重新应用�
 
 ## 10. 超时与中止
 
-- 工具级 `timeoutMs = 5 * 60_000`；`freecad_status` 为 30 s。
-- 宿主取消（abort signal）会 kill 子进程并抛 `FreeCAD worker aborted`。
+- 每次调用的预算由插件自己的计时器执行：默认 `TIMEOUT_MS = 5 * 60_000`，调用参数 `timeoutMs` 最大 30 分钟；`freecad_status` 为 30 s。
+- 工具对象上声明的 `timeoutMs` 是 `TOOL_TIMEOUT_CEILING_MS`（30.5 分钟）。DSH 的 `@deepseek-ai/dsh-tool-call-timeout-policy`（dsh-base 默认挂载）按这个声明值武装 `exec.signal`，到点就把结果改成 “tool call timed out”；所以声明值必须高于参数上限，否则每次调用都被截在声明值。
+- 宿主取消：`execute(args, exec)` 把 `exec.signal` 传给 `runWorker`，abort 时 kill 子进程、等它退出（最多 5 s）再抛 `FreeCAD worker aborted`。DSH 取消时会等工具 promise 结束，所以不响应 signal 就意味着“停止”要等 FreeCAD 自己跑完。
 - 大装配的 HLR 可能超时：先用小模型验证，再上大文件（见 [limitations.md](limitations.md)）。
 
 ## 11. 代码地图
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `index.js` | ~700 | 四个工具的 JSON Schema、参数校验、`freecadcmd` 探测、spawn、结果格式化、`Config` 导出 |
+| `index.js` | ~1000 | 五个工具的 JSON Schema、参数校验、`freecadcmd` 探测、spawn、结果格式化、`Config` 导出 |
 | `lib/client.js` | ~350 | 设置页组件与注册 |
 | `dsh/fc_worker.py` | ~410 | 入口、分派、request/result 编解码 |
 | `dsh/fc_common.py` | ~800 | 导入、shape 统计、孔识别、面边明细、HLR 投影 |

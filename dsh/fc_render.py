@@ -86,19 +86,27 @@ def scale_label(scale):
     return "1:%s" % fmt_num(inv)
 
 
+# GB/T 14690 (ISO 5455) drawing scales, largest first: the preferred series
+# (5:1 2:1 1:1 1:2 1:5 1:10 ...) plus the permitted one (4:1 2.5:1 1:1.5
+# 1:2.5 1:3 1:4 1:6 ...).  The old list also offered 3:1, 1.5:1, 0.8, 0.7,
+# 0.6, 0.35 and 0.15, which print as 1:1.25, 1:1.43, 1:1.67, 1:2.86, 1:6.67 --
+# none of them a drawing scale (the bundled demo part came out at 1:1.67).
+STANDARD_SCALES = [5.0, 4.0, 2.5, 2.0, 1.0,
+                   1 / 1.5, 1 / 2.0, 1 / 2.5, 1 / 3.0, 1 / 4.0, 1 / 5.0, 1 / 6.0,
+                   1 / 10.0, 1 / 15.0, 1 / 20.0, 1 / 25.0, 1 / 30.0, 1 / 40.0, 1 / 50.0]
+
+
 def choose_scale(sheet, dims):
-    """Pick the largest ISO-like scale that fits the available drawing area."""
+    """Pick the largest standard scale that fits the available drawing area."""
     W, H = SHEETS.get(sheet, SHEETS["A3"])
     title_top = H - 48.0
     avail_w = W - 2 * MARGIN - 18.0
     avail_h = title_top - MARGIN - 22.0
-    scales = [4.0, 3.0, 2.5, 2.0, 1.5, 1.0, 0.8, 0.7, 0.6, 0.5, 0.4,
-              0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05]
-    for s in scales:
+    for s in STANDARD_SCALES:
         total_w, total_h = dims(s)
         if total_w <= avail_w and total_h <= avail_h:
             return s
-    return 0.05
+    return STANDARD_SCALES[-1]
 
 
 def _arrow(scene, x, y, dx, dy, size=2.2, color=DIM):
@@ -322,16 +330,17 @@ def _title_block(scene, W, H, meta, scale, sheet, filename):
     scene.text(split2 + 3, bottom_y, "张  1/1", 2.7, INK, layer="TITLE")
 
 
-def _hole_xy(hole):
-    ax = hole.get("axisName")
+def _hole_xyz(hole):
+    """Model X / Y / Z of a hole centre for the table, with its own axis blanked.
+
+    The table used to have two columns headed X and Y and filled them with
+    (Y, Z) for X-axis holes and (X, Z) for Y-axis holes, so an X-axis hole at
+    y=10, z=15 read as X 10, Y 15.  Three named columns cannot be misread; the
+    coordinate along the hole axis is only the mid-depth point, so it is "—".
+    """
     c = hole.get("center") or [0, 0, 0]
-    if ax == "Z":
-        return c[0], c[1]
-    if ax == "X":
-        return c[1], c[2]
-    if ax == "Y":
-        return c[0], c[2]
-    return None, None
+    skip = {"X": 0, "Y": 1, "Z": 2}.get(hole.get("axisName"))
+    return [None if i == skip else c[i] for i in range(3)]
 
 
 def _hole_table_block(scene, rows, x, y, col_w, row_h, title_h, total_w, spans):
@@ -339,14 +348,14 @@ def _hole_table_block(scene, rows, x, y, col_w, row_h, title_h, total_w, spans):
     table_h = title_h + row_h * (len(rows) + 1)
     scene.rect(x, y, total_w, table_h, 0.35, INK, layer="TITLE")
     scene.line(x, y + title_h, x + total_w, y + title_h, 0.25, INK, layer="TITLE")
-    headers = ["孔号", "直径", "数量", "轴", "深度", "X", "Y"]
+    headers = ["孔号", "直径", "数量", "轴", "深度", "X", "Y", "Z"]
     for i, (cw, text) in enumerate(zip(col_w, headers)):
         cx = x + sum(col_w[:i])
         scene.text(cx + cw * 0.5, y + 5.6, text, 2.7, INK, "middle", layer="TITLE")
     for r, hole in enumerate(rows):
         ry = y + title_h + row_h * r
         scene.line(x, ry, x + total_w, ry, 0.18, INK, layer="TITLE")
-        hx, hy = _hole_xy(hole)
+        coords = _hole_xyz(hole)
         span = spans.get(hole.get("axisName"))
         d = float(hole.get("depth") or 0)
         # A local through-hole (e.g. through a 12 mm plate on a taller part)
@@ -365,9 +374,7 @@ def _hole_table_block(scene, rows, x, y, col_w, row_h, title_h, total_w, spans):
             "1",
             hole.get("axisName") or "",
             depth,
-            fmt_num(hx) if hx is not None else "—",
-            fmt_num(hy) if hy is not None else "—",
-        ]
+        ] + [fmt_num(v) if v is not None else "—" for v in coords]
         for i, (cw, value) in enumerate(zip(col_w, values)):
             cx = x + sum(col_w[:i])
             scene.text(cx + cw * 0.5, ry + row_h - 2.0, value, 2.6, INK,
@@ -387,7 +394,8 @@ def _hole_table(scene, holes, W, H, bbox=None, x=None, y=None):
     """
     if not holes:
         return
-    col_w = [13.0, 15.0, 10.0, 9.0, 18.0, 26.0, 26.0]
+    # Same 117 mm total as before (build_scene reserves that width).
+    col_w = [13.0, 15.0, 10.0, 9.0, 18.0, 52.0 / 3, 52.0 / 3, 52.0 / 3]
     total_w = sum(col_w)
     row_h = 6.5
     title_h = 8.0
@@ -600,8 +608,12 @@ def render_svg(scene, path):
             weight = ' font-weight="bold"' if item["bold"] else ""
             transform = ""
             if abs(item["rotation"]) > 1e-9:
+                # Scene rotation is counter-clockwise on the sheet (as the
+                # PDF/PNG draw it); SVG's rotate() is clockwise in its y-down
+                # space, so negate it.  Vertical dimension values used to
+                # read top-to-bottom in the SVG only.
                 transform = ' transform="rotate(%s %s %s)"' % (
-                    fmt_num(item["rotation"]), fmt_num(item["p"][0]),
+                    fmt_num(-item["rotation"]), fmt_num(item["p"][0]),
                     fmt_num(item["p"][1]))
             out.append('<text x="%s" y="%s" font-family="%s" font-size="%s" '
                        'fill="%s" text-anchor="%s"%s%s>%s</text>'
@@ -628,8 +640,15 @@ def _dxf_text(s):
 
 
 def render_dxf(scene, path):
-    def pair(code, value):
-        return "%s\n%s\n" % (code, value)
+    # The scene uses page coordinates (origin top-left, y down) like SVG; DXF
+    # world coordinates are y up.  Writing y unchanged mirrored the whole
+    # sheet top-to-bottom: header at the bottom, title block at the top, the
+    # top view above the front view and every part outline flipped -- the
+    # one format meant for CAM.  Flip y here and only here.
+    page_h = scene.height
+
+    def fy(y):
+        return page_h - float(y)
 
     def line_entity(x1, y1, x2, y2, layer="OUTLINE"):
         return ("0\nLINE\n8\n%s\n10\n%s\n20\n%s\n11\n%s\n21\n%s\n"
@@ -652,7 +671,10 @@ def render_dxf(scene, path):
 
     def text_entity(x, y, height, value, anchor="start", rotation=0.0,
                     layer="TEXT"):
-        align = {"start": (0, 0), "middle": (1, 2), "end": (2, 2)}.get(anchor,
+        # Horizontal justification only; vertical stays on the baseline like
+        # SVG text and the matplotlib PDF/PNG (73=2 used to drop "middle" and
+        # "end" text by half its height relative to the other formats).
+        align = {"start": (0, 0), "middle": (1, 0), "end": (2, 0)}.get(anchor,
                                                                        (0, 0))
         s = "0\nTEXT\n8\n%s\n10\n%s\n20\n%s\n30\n0\n40\n%s\n1\n%s\n50\n%s\n" % (
             layer, fmt_num(x), fmt_num(y), fmt_num(height), _dxf_text(value),
@@ -695,14 +717,18 @@ def render_dxf(scene, path):
         if layer not in DXF_COLORS:
             layer = "OUTLINE"
         if kind == "line":
-            lines.append(line_entity(item["p1"][0], item["p1"][1],
-                                     item["p2"][0], item["p2"][1], layer))
+            lines.append(line_entity(item["p1"][0], fy(item["p1"][1]),
+                                     item["p2"][0], fy(item["p2"][1]), layer))
         elif kind == "polyline":
-            lines.append(polyline_entity(item["points"], item["closed"], layer))
+            lines.append(polyline_entity([(x, fy(y)) for x, y in item["points"]],
+                                         item["closed"], layer))
         elif kind == "circle":
-            lines.append(circle_entity(item["c"][0], item["c"][1], item["r"], layer))
+            lines.append(circle_entity(item["c"][0], fy(item["c"][1]), item["r"], layer))
         elif kind == "text":
-            lines.append(text_entity(item["p"][0], item["p"][1], item["size"],
+            # Scene rotation is counter-clockwise as seen on the sheet (what
+            # the matplotlib PDF/PNG draw); DXF angles are counter-clockwise
+            # in y-up world space, so the value carries over unchanged.
+            lines.append(text_entity(item["p"][0], fy(item["p"][1]), item["size"],
                                      item["text"], item["anchor"],
                                      item["rotation"], layer))
     lines.append("0\nENDSEC\n0\nEOF\n")

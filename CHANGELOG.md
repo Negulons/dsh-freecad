@@ -6,6 +6,53 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+全部问题都在 Windows 11 + FreeCAD 1.1.4 便携版 + DeepSeek Harness Desktop 0.2.1-rc.3 上复现过，
+修复后同一环境下重测通过；每一条都有对应的回归测试（在 0.4.2 代码上失败，修复后通过）。
+
+### Fixed
+
+- **DXF 上下颠倒。** 版面坐标是 y 向下（与 SVG 相同），DXF 世界坐标是 y 向上，写出时没翻转：
+  页眉跑到底部、标题栏跑到顶部、俯视图在主视图上方、零件轮廓整体镜像——偏偏是给 CAM 用的格式。
+  现在 `render_dxf` 统一做 `y → 页高 − y`；文字对齐改回基线（与 SVG/PDF 一致）。
+- **SVG 竖直尺寸数字方向反了**（从上往下读，PDF/PNG 是从下往上）。`rotate()` 取反。
+- **DSH 里点"停止"关不掉 FreeCAD。** `execute()` 没接 DSH 传入的 `exec.signal`，取消后
+  `freecadcmd` 照常跑完并写出全部文件，而 DSH 会一直等工具结束。现在 abort 会结束子进程并等它退出。
+- **单次 `timeoutMs` 在 DSH 里不生效。** dsh-base 默认挂载的 tool-call-timeout-policy 按工具*声明的*
+  `timeoutMs`（5 分钟）强制超时，所以调用参数里给 10 分钟也会在 5 分钟时报"tool call timed out"，
+  而 FreeCAD 还在后台把文件写完。工具改为声明 30.5 分钟上限，实际预算由插件按调用参数执行；
+  `freecad_inspect_step` 也补上了 `timeoutMs` 参数。
+- **多零件 STEP 基本不可用。** 导入时把 `App::Part` 容器和 `App::Origin` 的轴/基准面/原点都当成零件：
+  两零件的装配被报成 10 个对象、体积 -3.6e152，出图报 `HLR projection failed ... command not done`，
+  连一次平移编辑都被拒绝（"no positive volume"）。现在只取真正的几何对象，跳过无限大的形状。
+- **嵌套装配里零件位置被算两次**（`Shape` 已含自身 Placement，又乘了一次全局 Placement）：
+  App::Part 内 y=50 的零件出现在 y=100。
+- **模型看不到它需要的编号。** 模型读到的是渲染文本而不是 JSON：
+  - `freecad_inspect_step` 不列面编号（`freecad_measure` 恰恰要按面编号量）；现在每个面都列出，
+    圆柱面带直径与凹/凸。
+  - 一页 200 条边只显示前 24 条，提示却是"下一页 offset=200"，第 25–200 条永远看不到；
+    现在本页每一条都列出，默认页改为 50 条。
+  - 多零件文件现在列出每个零件的名称、尺寸和体积。
+  - `freecad_edit_step` 现在逐步列出操作和实际命中的边（0.3.0 的说明里写了但渲染里没有），
+    并显示 warnings。
+- **夹角最大只报 90°。** 两条共顶点的直边夹 135° 报成 45°。现在共顶点时给 0–180° 的射线夹角；
+  两个面另给 `normalAngle`（外法线夹角 0–180°），`value` 保持两平面夹角 0–90° 以兼容旧调用。
+- **有腰形孔时孔号跳号**（S1、H2、H3，没有 H1）。圆孔和腰形孔分别计数。
+- **孔表 X/Y 列对 X、Y 轴向的孔填错。** X 轴孔中心 (20,10,15) 在孔表里显示为 X=10、Y=15。
+  孔表改为 X / Y / Z 三列模型坐标，沿孔轴的那一列写 "—"；表宽不变。
+- **自动比例不合国标。** 候选里有 0.8/0.7/0.6/0.35/0.15，会印出 1:1.25、1:1.43、1:1.67、1:2.86、1:6.67；
+  仓库自带的示例件就是 1:1.67。现在只取 GB/T 14690 的优先与允许比例（示例件变为 1:2）。
+- `edit` 处理多零件文件时会提示"合并成一个对象导出，零件名和颜色不保留"，不再静默。
+- `scripts/install.mjs` 结尾的 `Ø` 是 GBK 乱码（`脴`）。
+
+### Tests
+
+- `tests/test_renderer.py`：DXF 方向（文字、直线、圆、多段线）、文字对齐、SVG 旋转方向、孔表三列、
+  国标比例，共新增 10 条（CI 运行）。
+- `tests/test_host.mjs`：工具声明的超时高于参数上限、渲染文本列全面/边/零件/命中边/夹角、
+  abort 与单次超时能在几秒内杀掉卡住的子进程、`execute()` 转发 `exec.signal`（CI 运行）。
+- `tests/test_geometry.py`（新，需要 FreeCAD）：多零件导入、嵌套 Placement、多零件编辑与出图、
+  孔号、夹角、示例件比例与 DXF 方向，共 23 条断言。
+
 ## 0.4.2 — 打包脚本跨平台
 
 ### Fixed

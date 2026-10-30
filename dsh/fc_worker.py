@@ -287,7 +287,13 @@ def do_edit(req):
             "before": before,
             "after": C.shape_stats(shape),
             "holes": C.detect_holes(shape)[0],
+            "warnings": [],
         }
+        if len(entries) > 1:
+            result["warnings"].append(
+                "The input holds %d parts (%s); the edit was applied to their combined "
+                "shape and exported as one object, so part names and colours are not kept."
+                % (len(entries), ", ".join(e["label"] for e in entries[:8])))
         if req.get("saveFCStd"):
             fcstd = os.path.splitext(out)[0] + ".FCStd"
             fc_doc = FreeCAD.newDocument("FCSave")
