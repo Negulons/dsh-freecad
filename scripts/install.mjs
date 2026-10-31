@@ -240,5 +240,5 @@ console.log('')
 console.log('[install] done. Restart DSH Desktop, then call freecad_status.')
 console.log('[install] verify with the bundled sample:')
 console.log(`[install]   inspect ${path.join(installDir, 'examples', 'demo_bracket.step')}`)
-console.log('[install] expected: 100 x 60 x 37 mm, 5 holes (4 x 脴9 + 1 x 脴25)')
+console.log('[install] expected: 100 x 60 x 37 mm, 5 holes (4 x Ø9 + 1 x Ø25)')
 

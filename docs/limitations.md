@@ -62,9 +62,8 @@ matplotlib 的 Type3 子集绘制，视觉正确但不能搜索/复制。
 默认路径、GBK DXF、字体均是 Windows 假设。
 提示：Linux/macOS 需要：可执行文件探测（`which freecadcmd`）、字体回退（Noto Sans CJK）、DXF 可选 UTF-8 或 GBK 配置项。
 
-### B4. 超时不可配置（低）
-`TIMEOUT_MS` 写死 300 s。
-提示：提到 `config.timeoutMs`。
+### B4. 超时不可配置（已解决）
+0.3.0 起每次调用可传 `timeoutMs`（最大 30 分钟）；在 DSH 里真正生效要求工具声明的 `timeoutMs` 高于这个上限，见 architecture.md 第 10 节。
 
 ### B5. 版本号手工维护（低）
 `package.json` 与 `drawing_manifest.json` 的 `generatedBy` 都是手写 `0.1.0`。

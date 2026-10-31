@@ -164,7 +164,7 @@ More in [docs/troubleshooting.md](docs/troubleshooting.md).
 | Document | Contents |
 | --- | --- |
 | [architecture.md](docs/architecture.md) | The three layers, the request/result protocol, why geometry lives in FreeCAD's process |
-| [tools.md](docs/tools.md) | Every parameter of the four tools, including the sharp edges |
+| [tools.md](docs/tools.md) | Every parameter of the five tools, including the sharp edges |
 | [drawing-engine.md](docs/drawing-engine.md) | HLR projection, view layout, dimensions, hole table, title block |
 | [troubleshooting.md](docs/troubleshooting.md) | Install, deploy, common errors |
 | [development.md](docs/development.md) | Changing the code, manual acceptance checklist |

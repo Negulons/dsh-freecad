@@ -257,21 +257,54 @@ def file_info(path):
 
 
 def _object_global_shape(obj):
-    """Copy the object's shape and bake its global placement into the copy."""
+    """Copy the object's shape and bake its global placement into the copy.
+
+    ``obj.Shape`` of a Part::Feature already carries the object's own
+    Placement, and ``getGlobalPlacement()`` = parents x own.  Only the parents'
+    part may be added on top, otherwise the own placement is applied twice (a
+    box placed at y=50 inside an App::Part used to come out at y=100).
+    """
     shape = obj.Shape
     if shape is None or shape.isNull():
         return None
     copy = shape.copy()
     try:
-        placement = obj.getGlobalPlacement()
+        own = obj.Placement
+        parents = obj.getGlobalPlacement().multiply(own.inverse())
+        copy.Placement = parents.multiply(copy.Placement)
     except Exception:
-        placement = getattr(obj, "Placement", None)
-    if placement is not None:
-        try:
-            copy.transformShape(placement.toMatrix())
-        except Exception:
-            pass
+        pass
     return copy
+
+
+def _is_geometry_object(obj):
+    """True for objects that are real model geometry.
+
+    STEP assemblies import as App::Part containers with an App::Origin (three
+    infinite axes, three infinite planes, a point).  Containers repeat their
+    children's geometry and origin features are construction aids, so taking
+    every object with a ``Shape`` counted parts twice and mixed infinite
+    planes into the model (volume -3.6e152, HLR "command not done").
+    """
+    try:
+        if not obj.isDerivedFrom("Part::Feature"):
+            return False
+        # An input consumed by another Part feature (Part::Compound links,
+        # boolean base/tool) is already inside that feature's shape.
+        for user in obj.InList:
+            if user.isDerivedFrom("Part::Feature"):
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _finite(shape):
+    try:
+        bb = shape.BoundBox
+        return max(bb.XLength, bb.YLength, bb.ZLength) < 1.0e99
+    except Exception:
+        return False
 
 
 def import_cad(path):
@@ -296,11 +329,13 @@ def import_cad(path):
         doc.recompute()
         entries = []
         for obj in list(doc.Objects):
+            if not _is_geometry_object(obj):
+                continue
             try:
                 shape = _object_global_shape(obj)
             except Exception:
                 shape = None
-            if shape is not None and not shape.isNull():
+            if shape is not None and not shape.isNull() and _finite(shape):
                 entries.append({
                     "name": obj.Name,
                     "label": obj.Label,
@@ -632,12 +667,16 @@ def detect_holes(shape, max_holes=200):
     holes = holes[:max_holes]
     out = []
     slot_no = 0
-    for idx, hole in enumerate(holes, 1):
+    hole_no = 0
+    for hole in holes:
+        # Separate counters: a slot sorted first used to leave the round
+        # holes numbered H2, H3 with no H1.
         if hole["kind"] == "slot":
             slot_no += 1
             hole_id = "S%d" % slot_no
         else:
-            hole_id = "H%d" % idx
+            hole_no += 1
+            hole_id = "H%d" % hole_no
         item = {
             "id": hole_id,
             "kind": hole["kind"],
@@ -1049,26 +1088,61 @@ def _measure_one(shape, n, item):
         ka, ga = _selector_geometry(shape, item.get("a"), "a")
         kb, gb = _selector_geometry(shape, item.get("b"), "b")
 
-        def direction(kind_, geo):
-            if kind_ == "face":
-                _, nrm = _face_normal_sample(geo)
-                return normalized(nrm)
-            if kind_ == "edge":
-                curve = geo.Curve
-                if hasattr(curve, "Direction"):
-                    return normalized(curve.Direction)
-                raise ValueError("angle needs a straight edge or a face, not a %s edge"
-                                 % curve.__class__.__name__)
+        if ka == "point" or kb == "point":
             raise ValueError("angle does not accept a bare point")
+        if ka != kb:
+            raise ValueError("angle needs two faces or two straight edges")
 
-        na = direction(ka, ga)
-        nb = direction(kb, gb)
-        value = math.degrees(math.acos(max(-1.0, min(1.0, abs(dot(na, nb))))))
+        def unsigned(u, v):
+            return math.degrees(math.acos(max(-1.0, min(1.0, dot(u, v)))))
+
+        if ka == "face":
+            # Outward normals keep their sign, so a 45 deg and a 135 deg
+            # chamfer no longer read the same.  `value` stays the angle between
+            # the two planes (0-90) for backward compatibility.
+            na = normalized(_face_normal_sample(ga)[1])
+            nb = normalized(_face_normal_sample(gb)[1])
+            normal_angle = unsigned(na, nb)
+            record.update({
+                "value": round(min(normal_angle, 180.0 - normal_angle), 4),
+                "normalAngle": round(normal_angle, 4),
+                "unit": "deg",
+                "a": ka, "b": kb,
+                "normalA": vlist(na), "normalB": vlist(nb),
+            })
+            return record
+
+        for geo in (ga, gb):
+            if not hasattr(geo.Curve, "Direction"):
+                raise ValueError("angle needs a straight edge or a face, not a %s edge"
+                                 % geo.Curve.__class__.__name__)
+        # A line's parametric direction is arbitrary.  When the edges share a
+        # vertex the angle that matters is between the two rays leaving that
+        # vertex (0-180); the old code folded it to 0-90, so 135 read as 45.
+        shared = None
+        for va in (ga.Vertexes[0].Point, ga.Vertexes[-1].Point):
+            for vb in (gb.Vertexes[0].Point, gb.Vertexes[-1].Point):
+                if (va - vb).Length < 1.0e-6:
+                    shared = va
+        if shared is not None:
+            def ray(edge):
+                p0, p1 = edge.Vertexes[0].Point, edge.Vertexes[-1].Point
+                far = p1 if (p0 - shared).Length < 1.0e-6 else p0
+                return normalized(far - shared)
+            ua, ub = ray(ga), ray(gb)
+            value = unsigned(ua, ub)
+            record["vertex"] = vlist(shared)
+        else:
+            ua = normalized(ga.Curve.Direction)
+            ub = normalized(gb.Curve.Direction)
+            value = unsigned(ua, ub)
+            value = min(value, 180.0 - value)
         record.update({
             "value": round(value, 4),
             "unit": "deg",
             "a": ka, "b": kb,
-            "normalA": vlist(na), "normalB": vlist(nb),
+            "sharedVertex": shared is not None,
+            "directionA": vlist(ua), "directionB": vlist(ub),
         })
         return record
     target = item.get("a") or item.get("item")

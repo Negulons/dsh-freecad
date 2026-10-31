@@ -141,7 +141,7 @@ worker 每次调用都重新加载，通常不需要重启；如果改了 `index
 | 文档 | 内容 |
 | --- | --- |
 | [architecture.md](docs/architecture.md) | 三层结构、请求/结果协议、为什么几何放在 FreeCAD 进程里 |
-| [tools.md](docs/tools.md) | 四个工具每个参数的语义与坑 |
+| [tools.md](docs/tools.md) | 五个工具每个参数的语义与坑 |
 | [drawing-engine.md](docs/drawing-engine.md) | HLR 投影、视图布局、尺寸、孔表、标题栏的实现 |
 | [troubleshooting.md](docs/troubleshooting.md) | 安装、部署、常见错误 |
 | [development.md](docs/development.md) | 改代码、人工验收清单 |

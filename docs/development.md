@@ -81,6 +81,11 @@ node test\call_tool.mjs freecad_step_to_drawing args.json
    22 条断言覆盖通孔、径向孔、45° 斜孔深度、腰形孔、沉头孔两段、曲面上的孔；
    新增识别规则时先在这里加用例。注意：脚本结尾用 `sys.exit`，所以所有输出都 `flush=True`——
    否则 FreeCAD 直接吞掉缓冲区，看起来像"什么都没执行"。
+8. **导入/测量/编辑/出图断言**：`freecadcmd tests/test_geometry.py`（需要 FreeCAD）。
+   覆盖多零件 STEP（容器与原点特征不算零件、体积与包围盒正确、编辑与出图能跑通）、
+   嵌套 Placement 只叠一次、腰形孔与圆孔分开编号、45°/135° 夹角、示例件的比例与 DXF 方向。
+9. **宿主取消与超时**：`node tests/test_host.mjs` 里用一个"卡住的假 freecadcmd"（Node 预加载阻塞脚本）
+   验证 abort 和单次超时都能在几秒内杀掉子进程，并检查渲染文本列出本页全部面和边。CI 里也跑。
 
 ## 7. 发布到 npm
 

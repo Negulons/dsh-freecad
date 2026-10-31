@@ -1,6 +1,6 @@
 # 工具与参数参考
 
-四个工具由 `index.js` 的 `apply()` 注册。所有长度单位 **mm**，角度单位 **度**。工具名以 `freecad_` 为前缀。
+五个工具由 `index.js` 的 `apply()` 注册。所有长度单位 **mm**，角度单位 **度**。工具名以 `freecad_` 为前缀。
 
 ---
 
@@ -22,9 +22,10 @@
 |---|---|---|---|
 | `input` | string | ✅ | STEP/STP（也接受 `.stpz`、IGES、BREP）绝对路径 |
 | `detail` | boolean | | 是否返回面/边明细 |
-| `maxItems` | integer | | 单次返回条数上限，10–2000，默认 200 |
-| `offset` | integer | | 从第几条开始翻页（0 = 从头），默认 0 |
-| `limit` | integer | | 本页条数，默认等于 `maxItems` |
+| `maxItems` | integer | | 单页条数上限，10–2000，默认 200 |
+| `offset` | integer | | 跳过前多少条（0 = 从第 1 条开始），默认 0 |
+| `limit` | integer | | 本页条数（面和边各自），默认 50 |
+| `timeoutMs` | integer | | 本次调用超时，默认 300000，最大 1800000 |
 
 支持的扩展名：`.step` `.stp` `.stpz` `.iges` `.igs` `.brep` `.brp`（大小写不敏感）。
 
@@ -52,7 +53,9 @@
 - `curvedFeatures`：开在曲面或过渡面上、无法按完整圆柱判定的孔（例如环件侧壁的径向孔），给 `axis` / `radius` / `coverage` / `angleDeg`，由模型决定是否标注。
 - `detail.edges[i].index` 是 **1-based**，可直接用于 fillet/chamfer 的 `edges`。
 - 明细很大时用 `offset`/`limit` 翻页：返回里带 `edgesTotal` / `facesTotal` 与 `nextEdgeOffset` / `nextFaceOffset`，按提示翻即可读全；每条边还带 `mid`（中点），方便和 `edgesNear` 配合。
-- 多对象文件会追加一条 `warnings`，提示“尺寸与图纸使用合并后的形状”。
+- 模型读到的是 `output.render` 的文本，不是 JSON。本页返回的每一个面（`F<n>`，供 `freecad_measure` 的 `{"face": n}` 使用，圆柱面带直径与凹/凸）和每一条边（`#<n>`）都会列出，所以默认页设为 50 条；0.4.2 及以前默认返回 200 条却只显示前 24 条边，面编号一个都不显示。
+- 多零件文件：只有真正的几何对象（`Part::Feature` 派生、且没有被其他 Part 特征引用）算零件；STEP 装配导入时生成的 `App::Part` 容器和 `App::Origin` 的轴、基准面、原点不再计入（以前会把它们算进去：零件重复、体积变成 -3.6e152、出图 HLR 报错）。嵌套装配的位置只叠加一次父级 Placement。
+- 多零件文件会追加一条 `warnings`，提示“尺寸与图纸使用合并后的形状”，渲染文本里列出每个零件的名称、尺寸和体积。
 
 ---
 
@@ -67,6 +70,7 @@
 | `output` | string | | 输出路径，默认 `<输入名>_edited.step` |
 | `overwrite` | boolean | | 允许输出=输入路径，默认 `false` |
 | `saveFCStd` | boolean | | 同时保存 `<输出名>.FCStd` |
+| `timeoutMs` | integer | | 本次调用超时，默认 300000，最大 1800000 |
 
 ### 操作类型
 
@@ -104,7 +108,8 @@
 - `fillet/chamfer` 不给 `edges`、给 `[]` 或 `"all"` → 直接报错（避免误操作全部边）。
 - 边索引越界时报 `fillet edge index out of range 1..N: ...`。
 - 输出路径与输入相同且未传 `overwrite:true` → 拒绝。
-- 返回：`{ input, output, operations:[{index,type,volumeBefore,volumeAfter,valid}], before, after, holes, fcstd? }`
+- 返回：`{ input, output, operations:[{index,type,volumeBefore,volumeAfter,valid,edges?}], before, after, holes, warnings, fcstd? }`；渲染文本逐步列出每个操作和它实际命中的边。
+- 多零件输入：编辑作用在合并后的形状上，导出为**一个**对象，零件名和颜色不保留；`warnings` 会说明这一点。
 
 > 注意：`chamfer` 的 JSON Schema 里描述字段叫 `radius`（`distance` 是别名），模型/用户写 `distance` 也能工作。
 
@@ -128,10 +133,14 @@ HLR 投影 → 第一角法二维加工图。
 | `header` | string | `FreeCAD 二维加工图` | 左上角页眉 |
 | `material` | string | `—` | 标题栏材料 |
 | `drawingNo` | string | 空 | 图号 |
+| `timeoutMs` | integer | `300000` | 本次调用超时，最大 1800000 |
 
 行为细节：
 
 - **A4 是紧凑版式**：固定 1:2，只画 `front`/`top`；若请求里给了 `right/iso` 会被过滤（请求 `front` 会兜底补上）。需要右视图/轴测图请用 A3 及以上。
+- 自动比例只取 GB/T 14690 的优先与允许比例：5:1 4:1 2.5:1 2:1 1:1 1:1.5 1:2 1:2.5 1:3 1:4 1:5 1:6 1:10 1:15 1:20 1:25 1:30 1:40 1:50。手工给的 `scale` 原样使用。
+- 孔表列为 孔号 / 直径 / 数量 / 轴 / 深度 / X / Y / Z，坐标是模型坐标系下的孔中心；沿孔轴方向的那一列写 “—”（那只是孔深中点）。
+- DXF 使用世界坐标 y 向上（页面左下角为原点），与 SVG/PDF/PNG 的版面一致；竖直尺寸数字三种格式都从下往上读。
 - 视图标签为“主视图 FRONT / 俯视图 TOP / 右视图 RIGHT / 轴测图 ISO”等。
 - 输出文件：`<输入名>_drawing.{svg,dxf,pdf,png}` + `drawing_manifest.json`。
 - 返回即 manifest 内容（另加 `manifest` 字段指向清单文件路径）。
@@ -174,12 +183,17 @@ HLR 投影 → 第一角法二维加工图。
 - 两个平面互相贴合时 `distance` 会是 0，此时看 **`planeOffset`**（两平面间距），板厚就是这么量的。
 - 单个测量项出错**不会**毁掉整批：该项返回 `{"index": n, "error": "..."}`，`resolved` 告诉你有几项成功。
 - 直径：`{"face": 圆柱面索引}` 或 `{"edge": 圆边索引}`。
+- 夹角：
+  - 两条直边**共顶点**时，`value` 是从该顶点出发的两条射线夹角，范围 0–180°（`sharedVertex: true`）；不共点时按两条直线取锐角 0–90°。0.4.2 及以前一律折成 0–90°，135° 会报成 45°。
+  - 两个面：`value` 仍是两平面夹角 0–90°（兼容旧行为），另给 `normalAngle`：两条外法线的夹角 0–180°，用它区分 45° 和 135° 的斜面；平行反向的两面为 180°。
+  - 点不能参与夹角；面和边不能混用。
 
 ## 通用行为
 
 | 项 | 值 |
 |---|---|
-| 超时 | 默认 300 s，每次调用可用 `timeoutMs` 调到最大 1800 s；`freecad_status` 30 s |
+| 超时 | 默认 300 s，每次调用可用 `timeoutMs` 调到最大 1800 s；`freecad_status` 30 s。工具对 DSH 声明的 `timeoutMs` 是 1830 s 的上限（DSH 的 tool-call-timeout-policy 按它强制超时），实际预算由插件自己的计时器按调用参数执行 |
+| 取消 | DSH 的 `exec.signal` 会传到 worker：点停止即结束 `freecadcmd` 子进程，并等它退出后清理临时目录 |
 | 进度 | worker 把阶段写进进度文件；返回里的 `timing.elapsedMs` / `timing.phases` 给出耗时与阶段，超时错误会带上最后几个阶段 |
 | 并发安全 | 重工具 `false`，否则可能同时启动多个 FreeCAD |
 | 卡片类型 | `edit`/`drawing` 声明 `presentCall`（kind: write），便于 UI 显示写操作 |
@@ -192,7 +206,8 @@ HLR 投影 → 第一角法二维加工图。
 |---|---|---|
 | `FreeCADCmd not found at ...` | 路径解析失败 | 设 `FREECAD_CMD` 或配置 `freecadCmd` |
 | `Plugin worker missing: .../dsh/fc_worker.py` | 安装不完整 | 重装或检查 `dsh/` 目录 |
-| `FreeCAD worker timed out after 300s` | 大模型 HLR/布尔超时 | 缩小模型/提高超时（改 `TIMEOUT_MS`） |
+| `FreeCAD worker timed out after 300s` | 大模型 HLR/布尔超时 | 缩小模型，或在调用里传更大的 `timeoutMs`（最大 1800000） |
+| `FreeCAD worker aborted` | 用户在 DSH 里取消了这次调用 | 无需处理；子进程已结束 |
 | `Unsupported CAD format '.stl'` | 扩展名不在白名单 | 转成 STEP/IGES/BREP |
 | `No solid/surface geometry was imported` | 文件无实体 | 检查文件是否为空/仅装配壳 |
 | `fillet requires an explicit list of 1-based edge indices` | 未给边 | 先 `inspect` 取边索引 |

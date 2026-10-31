@@ -70,6 +70,19 @@ const WORKER = (() => {
 })()
 const TIMEOUT_MS = 5 * 60_000
 const MAX_TIMEOUT_MS = 30 * 60_000
+// The `timeoutMs` property of a registered tool is not advisory: DSH's
+// tool-call-timeout-policy (mounted by dsh-base) arms exec.signal with it and
+// turns the call into "tool call timed out" when it fires.  Declaring the
+// 5-minute default there capped every per-call `timeoutMs` argument at 5
+// minutes -- a 10-minute drawing kept running and wrote its files, yet the
+// model was told it timed out.  So the tool declares the ceiling and the
+// per-call timer in runWorker enforces the requested (or default) budget.
+const TOOL_TIMEOUT_CEILING_MS = MAX_TIMEOUT_MS + 30_000
+
+/** Default face/edge page size of freecad_inspect_step (all rows are rendered). */
+const DETAIL_PAGE = 50
+
+const fmt1 = (p) => p.map((x) => Number(x).toFixed(1)).join(',')
 
 /**
  * Per-call timeout. Big assemblies legitimately take longer than five minutes;
@@ -330,6 +343,7 @@ async function runWorker(payload, exec, signal, timeoutMs = TIMEOUT_MS) {
   if (!fsSync.existsSync(WORKER)) {
     throw new Error(`Plugin worker missing: ${WORKER}`)
   }
+  if (signal?.aborted) throw new Error('FreeCAD worker aborted')
   const tmp = await fs.mkdtemp(path.join(scratchDir(cmd), 'dsh-freecad-'))
   const reqPath = path.join(tmp, 'request.json')
   const resPath = path.join(tmp, 'result.json')
@@ -368,24 +382,35 @@ async function runWorker(payload, exec, signal, timeoutMs = TIMEOUT_MS) {
       const stdout = collect(child.stdout)
       const stderr = collect(child.stderr)
       let settled = false
-      const timer = setTimeout(() => {
+      let timer
+      // DSH waits for a cancelled tool body to settle before the call ends, so
+      // an ignored abort kept FreeCAD running until it finished on its own.
+      // Kill it, and settle once the process has actually exited (bounded)
+      // so the scratch directory can be removed afterwards.
+      let closed = false
+      const exited = new Promise((done) => child.once('close', () => { closed = true; done() }))
+      const stop = async (error) => {
         if (settled) return
         settled = true
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
         try { child.kill() } catch { /* ignore */ }
+        if (!closed) await Promise.race([exited, new Promise((done) => setTimeout(done, 5000).unref?.())])
+        reject(error)
+      }
+      const onAbort = () => {
+        const trail = readProgress()
+        const where = trail.length ? ` (进度：${trail.join(' → ')})` : ''
+        void stop(new Error(`FreeCAD worker aborted${where}`))
+      }
+      timer = setTimeout(() => {
         const trail = readProgress()
         const where = trail.length ? `\n进度：${trail.join(' → ')}` : ''
-        reject(new Error(
+        void stop(new Error(
           `FreeCAD worker timed out after ${Math.max(1, Math.round(timeoutMs / 1000))}s` +
           `${where}\n可以调大 timeoutMs（最多 30 分钟），或把任务拆小。`,
         ))
       }, timeoutMs)
-      const onAbort = () => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        try { child.kill() } catch { /* ignore */ }
-        reject(new Error('FreeCAD worker aborted'))
-      }
       if (signal) {
         if (signal.aborted) return onAbort()
         signal.addEventListener('abort', onAbort, { once: true })
@@ -394,13 +419,14 @@ async function runWorker(payload, exec, signal, timeoutMs = TIMEOUT_MS) {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
         reject(new Error(`Failed to start FreeCADCmd: ${error.message}`))
       })
       child.on('close', (code) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        if (signal) signal.removeEventListener('abort', onAbort)
+        signal?.removeEventListener('abort', onAbort)
         resolve({ code, stdout: stdout(), stderr: stderr() })
       })
     })
@@ -514,9 +540,10 @@ function inspectTool(exec) {
       properties: {
         input: { type: 'string', description: 'STEP/STP 文件绝对路径（也支持 IGES/BREP）' },
         detail: { type: 'boolean', description: '是否返回面和边的详细清单' },
-        maxItems: { type: 'integer', minimum: 10, maximum: 2000, description: '单次返回的最大条数，默认 200' },
-        offset: { type: 'integer', minimum: 0, description: '从第几条开始（1-based 索引），用于翻页，默认 0' },
-        limit: { type: 'integer', minimum: 1, maximum: 2000, description: '本页返回条数，默认等于 maxItems' },
+        maxItems: { type: 'integer', minimum: 10, maximum: 2000, description: '单页条数上限，默认 200' },
+        offset: { type: 'integer', minimum: 0, description: '跳过前多少条（0 = 从第 1 条开始），翻页时填返回的“下一页 offset”，默认 0' },
+        limit: { type: 'integer', minimum: 1, maximum: 2000, description: `本页条数（面和边各自），默认 ${DETAIL_PAGE}；本页每一条都会显示` },
+        timeoutMs: timeoutParam(),
       },
       required: ['input'],
     },
@@ -549,38 +576,55 @@ function inspectTool(exec) {
           lines.push(`  ${g.id}: 弧面 R${g.radius} ${g.axisName}轴 ${g.angleDeg}° 深${g.depth} @ (${g.center.map((x) => Number(x).toFixed(1)).join(', ')})（凹圆柱面，非整圆：内腔弧、圆底槽这类）`)
         }
         if (curved.length > 6) lines.push(`  … 共 ${curved.length} 处曲面特征`)
+        const objects = value.objects || []
+        if (objects.length > 1) {
+          lines.push(`零件 ${objects.length} 个：`)
+          for (const o of objects.slice(0, 30)) {
+            const sz = o.bbox?.size ? ` ${o.bbox.size.map((x) => Number(x).toFixed(2)).join('×')} mm` : ''
+            lines.push(`  ${o.label} (${o.typeId})${sz} | 体积 ${Number(o.stats?.volume || 0).toFixed(2)} mm³`)
+          }
+          if (objects.length > 30) lines.push(`  … 共 ${objects.length} 个`)
+        }
+        for (const w of value.warnings || []) lines.push(`⚠ ${w}`)
+        // The model only reads this text, not the JSON value: every row the
+        // page returned must be listed, faces included (freecad_measure takes
+        // face numbers, which used to be invisible).
         const detail = value.detail || {}
+        if (Array.isArray(detail.faces) && detail.faces.length) {
+          const first = detail.faces[0].index
+          const last = detail.faces.at(-1).index
+          lines.push(`面（freecad_measure 用 {"face": n}，1-based）：#${first}–#${last}，共 ${detail.facesTotal ?? detail.faces.length} 个`)
+          for (const f of detail.faces) {
+            let extra = ''
+            if (f.surface === 'Cylinder' && f.radius != null) {
+              extra = ` Ø${Number(f.radius * 2).toFixed(2)} 轴(${fmt1(f.axis || [])})${f.concave === true ? ' 凹/孔壁' : f.concave === false ? ' 凸' : ''}`
+            }
+            const at = f.centerOfMass ? ` 中心(${fmt1(f.centerOfMass)})` : ''
+            lines.push(`  F${f.index} ${f.surface} 面积${Number(f.area).toFixed(2)}${extra}${at}`)
+          }
+          if (detail.nextFaceOffset != null) lines.push(`  面还有更多：下一页 offset=${detail.nextFaceOffset}`)
+        }
         if (Array.isArray(detail.edges) && detail.edges.length) {
-          const total = detail.edgesTotal ?? detail.edges.length
-          lines.push(`边索引（可用于倒圆角/倒角，1-based；共 ${total} 条）:`)
-          for (const e of detail.edges.slice(0, 24)) {
+          const first = detail.edges[0].index
+          const last = detail.edges.at(-1).index
+          lines.push(`边（倒圆角/倒角的 edges，1-based）：#${first}–#${last}，共 ${detail.edgesTotal ?? detail.edges.length} 条`)
+          for (const e of detail.edges) {
             if (e.curve === 'Circle' && e.center) {
-              const c = e.center.map((x) => Number(x).toFixed(1)).join(',')
-              lines.push(`  #${e.index} Circle R${Number(e.radius).toFixed(2)} @ (${c})`)
+              lines.push(`  #${e.index} Circle R${Number(e.radius).toFixed(2)} @ (${fmt1(e.center)})`)
             } else {
-              const from = e.start ? e.start.map((x) => Number(x).toFixed(1)).join(',') : '?'
-              const to = e.end ? e.end.map((x) => Number(x).toFixed(1)).join(',') : '?'
+              const from = e.start ? fmt1(e.start) : '?'
+              const to = e.end ? fmt1(e.end) : '?'
               lines.push(`  #${e.index} ${e.curve} L=${Number(e.length).toFixed(2)} (${from}) → (${to})`)
             }
           }
-          if (detail.edges.length > 24) {
-            lines.push(`  … 本页 ${detail.edges.length} 条，仅显示前 24 条`)
-          }
-          if (detail.nextEdgeOffset) {
-            lines.push(`  下一页：offset=${detail.nextEdgeOffset}`)
-          }
-        }
-        if (Array.isArray(detail.faces) && detail.faces.length) {
-          const total = detail.facesTotal ?? detail.faces.length
-          lines.push(`面明细: ${detail.faces.length}/${total} 条${detail.facesTruncated ? '（已截断）' : ''}`)
-          if (detail.nextFaceOffset) lines.push(`  下一页：offset=${detail.nextFaceOffset}`)
+          if (detail.nextEdgeOffset != null) lines.push(`  边还有更多：下一页 offset=${detail.nextEdgeOffset}`)
         }
         return [{ type: 'text', text: lines.join('\n') }]
       },
     },
-    timeoutMs: TIMEOUT_MS,
+    timeoutMs: TOOL_TIMEOUT_CEILING_MS,
     isConcurrencySafe: () => false,
-    async execute(args) {
+    async execute(args, call) {
       if (!args?.input) throw new Error('freecad_inspect_step needs an input path')
       return runWorker({
         action: 'inspect',
@@ -588,8 +632,10 @@ function inspectTool(exec) {
         detail: Boolean(args.detail),
         maxItems: args.maxItems,
         offset: args.offset || 0,
-        limit: args.limit,
-      }, exec, undefined, timeoutOf(args))
+        // Every returned row is rendered for the model, so the default page
+        // stays small; it used to return 200 and show only the first 24.
+        limit: args.limit ?? Math.min(DETAIL_PAGE, args.maxItems ?? DETAIL_PAGE),
+      }, exec, call?.signal, timeoutOf(args))
     },
   }
 }
@@ -621,14 +667,25 @@ function editTool(exec) {
           `体积 ${Number(before.volume || 0).toFixed(2)} → ${Number(after.volume || 0).toFixed(2)} mm³ | ${after.solids ?? '?'} solid | 有效 ${after.valid}`,
           `孔 ${(value.holes || []).length} 个 | 操作 ${(value.operations || []).length} 步`,
         ]
+        for (const op of value.operations || []) {
+          const vol = op.volumeAfter != null ? ` 体积→${Number(op.volumeAfter).toFixed(2)}` : ''
+          lines.push(`  #${op.index} ${op.type}${vol}${op.valid === false ? ' ⚠无效' : ''}`)
+          // Edge indices renumber after every operation; showing what the
+          // selector actually hit is the only way to confirm the choice.
+          for (const e of op.edges || []) {
+            const mid = e.mid ? ` 中点(${fmt1(e.mid)})` : ''
+            lines.push(`      命中边 #${e.index} ${e.curve || ''} L=${Number(e.length).toFixed(2)}${mid}`)
+          }
+        }
+        for (const w of value.warnings || []) lines.push(`⚠ ${w}`)
         if (value.fcstd) lines.push(`FCStd: ${value.fcstd}`)
         return [{ type: 'text', text: lines.join('\n') }]
       },
     },
-    timeoutMs: TIMEOUT_MS,
+    timeoutMs: TOOL_TIMEOUT_CEILING_MS,
     isConcurrencySafe: () => false,
     presentCall: (args) => ({ card: 'generic', title: 'FreeCAD STEP 编辑', kind: 'write', rawInput: args }),
-    async execute(args) {
+    async execute(args, call) {
       if (!args?.input) throw new Error('freecad_edit_step needs an input path')
       if (!Array.isArray(args.operations) || args.operations.length === 0) {
         throw new Error('freecad_edit_step needs at least one operation')
@@ -640,7 +697,7 @@ function editTool(exec) {
         operations: args.operations,
         overwrite: Boolean(args.overwrite),
         saveFCStd: Boolean(args.saveFCStd),
-      }, exec, undefined, timeoutOf(args))
+      }, exec, call?.signal, timeoutOf(args))
     },
   }
 }
@@ -682,10 +739,10 @@ function drawingTool(exec) {
         return [{ type: 'text', text: lines.join('\n') }]
       },
     },
-    timeoutMs: TIMEOUT_MS,
+    timeoutMs: TOOL_TIMEOUT_CEILING_MS,
     isConcurrencySafe: () => false,
     presentCall: (args) => ({ card: 'generic', title: 'FreeCAD 二维加工图', kind: 'write', rawInput: args }),
-    async execute(args) {
+    async execute(args, call) {
       if (!args?.input) throw new Error('freecad_step_to_drawing needs an input path')
       return runWorker({
         action: 'drawing',
@@ -703,7 +760,7 @@ function drawingTool(exec) {
           material: args.material,
           drawingNo: args.drawingNo,
         },
-      }, exec, undefined, timeoutOf(args))
+      }, exec, call?.signal, timeoutOf(args))
     },
   }
 }
@@ -836,7 +893,12 @@ function measureTool(exec) {
           }
           const unit = m.unit || 'mm'
           if (m.kind === 'angle') {
-            lines.push(`  #${m.index} 夹角 ${Number(m.value).toFixed(3)}°`)
+            if (m.normalAngle != null) {
+              lines.push(`  #${m.index} 两平面夹角 ${Number(m.value).toFixed(3)}° | 外法线夹角 ${Number(m.normalAngle).toFixed(3)}°`)
+            } else {
+              const how = m.sharedVertex ? '（共顶点，0–180°）' : '（不共点，按直线取锐角）'
+              lines.push(`  #${m.index} 夹角 ${Number(m.value).toFixed(3)}°${how}`)
+            }
           } else if (m.kind === 'radius') {
             const r = m.radius != null ? ` (R${Number(m.radius).toFixed(3)})` : ''
             lines.push(`  #${m.index} 直径 Ø${Number(m.value).toFixed(3)}${r}`)
@@ -856,9 +918,9 @@ function measureTool(exec) {
         return [{ type: 'text', text: lines.join('\n') }]
       },
     },
-    timeoutMs: TIMEOUT_MS,
+    timeoutMs: TOOL_TIMEOUT_CEILING_MS,
     isConcurrencySafe: () => true,
-    async execute(args) {
+    async execute(args, call) {
       if (!args?.input) throw new Error('freecad_measure needs an input path')
       if (!Array.isArray(args.items) || args.items.length === 0) {
         throw new Error('freecad_measure needs a non-empty items array')
@@ -867,7 +929,7 @@ function measureTool(exec) {
         action: 'measure',
         input: resolveWorkspacePath(args.input),
         items: args.items,
-      }, exec, undefined, timeoutOf(args))
+      }, exec, call?.signal, timeoutOf(args))
     },
   }
 }
@@ -937,6 +999,9 @@ export const _internal = {
   PATH_KEY,
   settingsPath,
   timeoutOf,
+  runWorker,
   TIMEOUT_MS,
   MAX_TIMEOUT_MS,
+  TOOL_TIMEOUT_CEILING_MS,
+  DETAIL_PAGE,
 }

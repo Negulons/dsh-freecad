@@ -133,7 +133,7 @@ node scripts\install.mjs
 | DSH 中看不到 `freecad_*` 工具 | 未重启 / bundle 未挂载 / patch 条目缺失 | 检查 profile `package.json` 与 `cordis.patch.yml`；重启 DSH |
 | 重启后插件消失，出现 `node_modules/.ignored/dsh-freecad` | 只复制目录没写依赖，启动时被 pnpm 清理 | 重新 `node scripts\install.mjs`（写入 `file:` 依赖并 install） |
 | `FreeCADCmd not found` | 路径不对/未安装 | `freecad_status` 看实际解析路径；设 `FREECAD_CMD` |
-| `FreeCAD worker timed out` | 模型过大/HLR 过慢 | 先小模型；必要时调大 `TIMEOUT_MS`（`index.js`） |
+| `FreeCAD worker timed out` | 模型过大/HLR 过慢 | 先小模型；必要时在调用里传更大的 `timeoutMs`（最大 1800000） |
 | worker 立即失败，stderr 有 Python traceback | 代码/FreeCAD 版本不匹配 | 看 result.json 的 `traceback`；对照 FreeCAD 版本 |
 | 中文变成方块/问号 | 缺字体 | 确认 `C:\Windows\Fonts\msyh.ttc`、`simhei.ttf`；PDF 用 matplotlib 时必须有其中一种 |
 | 工具调用被 DSH 拒绝，提示非法 JSON 数值 | 结果里出现 `-0.0`/`NaN` | 不应再出现；若复现，检查 `_json_safe()` 是否被绕过 |
